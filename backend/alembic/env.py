@@ -18,7 +18,7 @@ def run_migrations_online():
         # Several API containers start at once on deploy; a MySQL named lock
         # makes sure only one of them runs the migrations.
         if is_mysql:
-            conn.execute(text("SELECT GET_LOCK('fleetpulse_migrations', 120)"))
+            conn.execute(text("SELECT GET_LOCK('dispatchx_migrations', 120)"))
             conn.commit()  # named locks are session-scoped; end the autobegun txn
         try:
             context.configure(connection=conn, target_metadata=target_metadata, compare_type=True)
@@ -27,7 +27,7 @@ def run_migrations_online():
             conn.commit()
         finally:
             if is_mysql:
-                conn.execute(text("SELECT RELEASE_LOCK('fleetpulse_migrations')"))
+                conn.execute(text("SELECT RELEASE_LOCK('dispatchx_migrations')"))
 
 
 run_migrations_online()

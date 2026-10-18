@@ -15,7 +15,7 @@ import httpx
 import socketio
 
 BASE = os.environ.get("BASE_URL", "http://localhost:8000").rstrip("/")
-PW = "fleetpulse123"
+PW = "dispatchx123"
 PICKUP = {"address": "Koramangala 5th Block", "lat": 12.9352, "lng": 77.6245}
 DROP = {"address": "Indiranagar 100ft Rd", "lat": 12.9719, "lng": 77.6412}
 
@@ -32,8 +32,8 @@ def step(msg):
 
 def main():
     c = httpx.Client(base_url=BASE, timeout=15)
-    cust = login(c, "customer@fleetpulse.dev")
-    rider = login(c, "rider@fleetpulse.dev")
+    cust = login(c, "customer@dispatchx.dev")
+    rider = login(c, "rider@dispatchx.dev")
     H = lambda t: {"Authorization": f"Bearer {t}"}
     step("logged in customer + rider")
 

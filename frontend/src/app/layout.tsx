@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FleetPulse",
+  title: "DispatchX",
   description: "Real-time delivery & dispatch platform",
 };
 

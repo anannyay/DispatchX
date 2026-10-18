@@ -7,7 +7,7 @@ RUN pip install -r requirements.txt
 
 COPY . .
 RUN useradd -r -u 1001 app && chmod +x entrypoint.sh \
-    && mkdir -p /tmp/fleetpulse-uploads && chown app /tmp/fleetpulse-uploads
+    && mkdir -p /tmp/dispatchx-uploads && chown app /tmp/dispatchx-uploads
 USER app
 
 EXPOSE 8000

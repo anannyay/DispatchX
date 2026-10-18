@@ -16,7 +16,7 @@ MESSAGES = {
     "order.created": ("Order placed", "We're finding a rider for order #{order_id}."),
     "order.assigned": ("Rider assigned", "A rider is on the way to pick up order #{order_id}."),
     "order.picked_up": ("Parcel picked up", "Order #{order_id} has been picked up and is on its way."),
-    "order.delivered": ("Delivered", "Order #{order_id} was delivered. Thanks for using FleetPulse!"),
+    "order.delivered": ("Delivered", "Order #{order_id} was delivered. Thanks for using DispatchX!"),
     "order.cancelled": ("Order cancelled", "Order #{order_id} was cancelled."),
     "order.unassigned": ("Delay", "We're having trouble finding a rider for order #{order_id}. Our team is on it."),
 }
@@ -43,7 +43,7 @@ def notify(event: dict):
     if settings.notify_topic_arn and etype in ("order.assigned", "order.delivered", "order.unassigned"):
         sns().publish(
             TopicArn=settings.notify_topic_arn,
-            Subject=f"FleetPulse: {title}"[:100],
+            Subject=f"DispatchX: {title}"[:100],
             Message=body,
             MessageAttributes={
                 "event_type": {"DataType": "String", "StringValue": etype},

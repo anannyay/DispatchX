@@ -1,4 +1,4 @@
-# FleetPulse: real-time delivery & dispatch platform
+# DispatchX: real-time delivery & dispatch platform
 
 Customers book parcel deliveries, the system matches the best nearby rider in
 seconds, and everyone tracks the delivery live on a map. Dispatchers watch the
@@ -32,8 +32,8 @@ docker compose exec api python -m app.seed --riders 100 --customers 30
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3001 (admin / admin) |
 
-Demo logins (password `fleetpulse123`): `customer@fleetpulse.dev`, `rider@fleetpulse.dev`,
-`dispatch@fleetpulse.dev`, `admin@fleetpulse.dev`. The login page has one-click demo buttons.
+Demo logins (password `dispatchx123`): `customer@dispatchx.dev`, `rider@dispatchx.dev`,
+`dispatch@dispatchx.dev`, `admin@dispatchx.dev`. The login page has one-click demo buttons.
 
 ### Bring the city to life
 

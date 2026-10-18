@@ -2,7 +2,7 @@ from celery import Celery
 
 from app.config import settings
 
-celery = Celery("fleetpulse", broker=settings.redis_url, backend=None, include=["app.workers.tasks"])
+celery = Celery("dispatchx", broker=settings.redis_url, backend=None, include=["app.workers.tasks"])
 celery.conf.update(
     task_acks_late=True,                 # re-run tasks if a worker dies mid-task
     worker_prefetch_multiplier=1,

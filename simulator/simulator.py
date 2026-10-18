@@ -1,4 +1,4 @@
-"""FleetPulse load & demo simulator.
+"""DispatchX load & demo simulator.
 
 Spawns virtual riders that drive around the city streaming GPS over
 Socket.IO, accept or decline job offers like real people, and complete
@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import httpx
 import socketio
 
-PASSWORD = "fleetpulse123"
+PASSWORD = "dispatchx123"
 CITIES = {
     "bangalore": (12.9716, 77.5946, [
         "Koramangala", "Indiranagar", "HSR Layout", "Whitefield", "Jayanagar", "MG Road",
@@ -79,7 +79,7 @@ async def login(http: httpx.AsyncClient, email: str) -> str:
 class Rider:
     def __init__(self, idx, args, http, center):
         self.idx, self.args, self.http, self.center = idx, args, http, center
-        self.email = f"rider{idx}@sim.fleetpulse.dev"
+        self.email = f"rider{idx}@sim.dispatchx.dev"
         self.pos = random_point(center, args.radius_km)
         self.heading = 0.0
         self.target = random_point(center, args.radius_km)
@@ -185,7 +185,7 @@ async def customers(args, http, center, areas):
     tokens = []
     for i in range(1, args.customers + 1):
         try:
-            tokens.append(await login(http, f"customer{i}@sim.fleetpulse.dev"))
+            tokens.append(await login(http, f"customer{i}@sim.dispatchx.dev"))
         except RuntimeError:
             pass
     if not tokens:

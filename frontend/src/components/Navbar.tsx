@@ -9,7 +9,7 @@ export function Logo({ dark = false }: { dark?: boolean }) {
     <Link href="/" className="flex items-center gap-2">
       <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-lg">⚡</span>
       <span className={`text-lg font-bold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>
-        Fleet<span className="text-brand-500">Pulse</span>
+        Dispatch<span className="text-brand-500">X</span>
       </span>
     </Link>
   );

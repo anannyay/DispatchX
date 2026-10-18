@@ -40,7 +40,7 @@ export default function Home() {
             Anything, anywhere in the city. <span className="text-brand-400">Tracked live.</span>
           </h1>
           <p className="mt-6 text-lg text-slate-400">
-            FleetPulse connects customers, delivery riders and dispatchers on one real-time platform:
+            DispatchX connects customers, delivery riders and dispatchers on one real-time platform:
             instant rider matching, live GPS tracking and an operations control room.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">
@@ -62,10 +62,10 @@ export default function Home() {
         <div className="mt-16 rounded-2xl bg-ink-800 p-6 text-sm text-slate-400 ring-1 ring-white/5">
           <div className="font-semibold text-white">Demo accounts</div>
           <div className="mt-2 grid gap-1 font-mono text-xs sm:grid-cols-2">
-            <span>customer@fleetpulse.dev</span>
-            <span>rider@fleetpulse.dev</span>
-            <span>dispatch@fleetpulse.dev</span>
-            <span>password: fleetpulse123</span>
+            <span>customer@dispatchx.dev</span>
+            <span>rider@dispatchx.dev</span>
+            <span>dispatch@dispatchx.dev</span>
+            <span>password: dispatchx123</span>
           </div>
         </div>
       </main>

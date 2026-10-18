@@ -6,16 +6,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    app_name: str = "FleetPulse"
+    app_name: str = "DispatchX"
     environment: str = "local"
 
     # Database: either a full URL, or the parts (ECS injects DB_PASSWORD from Secrets Manager)
     database_url: str | None = None
     db_host: str = "localhost"
     db_port: int = 3306
-    db_name: str = "fleetpulse"
-    db_user: str = "fleetpulse"
-    db_password: str = "fleetpulse"
+    db_name: str = "dispatchx"
+    db_user: str = "dispatchx"
+    db_password: str = "dispatchx"
 
     redis_url: str = "redis://localhost:6379/0"
 
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     sqs_dispatch_queue_url: str | None = None
     sqs_notify_queue_url: str | None = None
     s3_bucket: str | None = None               # proof-of-delivery photos
-    local_upload_dir: str = "/tmp/fleetpulse-uploads"
+    local_upload_dir: str = "/tmp/dispatchx-uploads"
     public_api_url: str = "http://localhost:8000"
 
     # Dispatch tuning

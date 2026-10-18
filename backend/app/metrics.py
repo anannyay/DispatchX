@@ -21,18 +21,18 @@ class BusinessCollector:
     def collect(self):
         try:
             for name, doc in COUNTERS.items():
-                c = CounterMetricFamily(f"fleetpulse_{name}", doc)
+                c = CounterMetricFamily(f"dispatchx_{name}", doc)
                 c.add_metric([], float(r.get(metric(name)) or 0))
                 yield c
-            g = GaugeMetricFamily("fleetpulse_riders", "Riders by state", labels=["state"])
+            g = GaugeMetricFamily("dispatchx_riders", "Riders by state", labels=["state"])
             g.add_metric(["online"], r.scard(ONLINE))
             g.add_metric(["available"], r.scard(AVAILABLE))
             yield g
-            sla = GaugeMetricFamily("fleetpulse_sla_breaches_active", "Active deliveries past SLA")
+            sla = GaugeMetricFamily("dispatchx_sla_breaches_active", "Active deliveries past SLA")
             sla.add_metric([], float(r.get(metric("sla_breaches_active")) or 0))
             yield sla
             samples = [float(x) for x in r.lrange(metric("assign_seconds"), 0, 99)]
-            a = GaugeMetricFamily("fleetpulse_assign_seconds_avg", "Avg seconds from order to rider accept (last 100)")
+            a = GaugeMetricFamily("dispatchx_assign_seconds_avg", "Avg seconds from order to rider accept (last 100)")
             a.add_metric([], sum(samples) / len(samples) if samples else 0)
             yield a
         except Exception:

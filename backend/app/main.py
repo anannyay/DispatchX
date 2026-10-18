@@ -17,7 +17,7 @@ from app.routers import admin, auth, orders, riders, uploads
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-api = FastAPI(title="FleetPulse API", version="1.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+api = FastAPI(title="DispatchX API", version="1.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
 api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if settings.cors_origins == "*" else settings.cors_origins.split(","),

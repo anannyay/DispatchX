@@ -8,9 +8,9 @@ import { Button, Input, Spinner } from "@/components/ui";
 import { homeFor, useAuth } from "@/lib/auth";
 
 const DEMOS = [
-  { label: "Customer", email: "customer@fleetpulse.dev" },
-  { label: "Rider", email: "rider@fleetpulse.dev" },
-  { label: "Dispatcher", email: "dispatch@fleetpulse.dev" },
+  { label: "Customer", email: "customer@dispatchx.dev" },
+  { label: "Rider", email: "rider@dispatchx.dev" },
+  { label: "Dispatcher", email: "dispatch@dispatchx.dev" },
 ];
 
 export default function LoginPage() {
@@ -55,7 +55,7 @@ export default function LoginPage() {
               <button
                 key={d.email}
                 disabled={busy}
-                onClick={() => submit(undefined, { email: d.email, password: "fleetpulse123" })}
+                onClick={() => submit(undefined, { email: d.email, password: "dispatchx123" })}
                 className="rounded-xl bg-white px-2 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
               >
                 {d.label}

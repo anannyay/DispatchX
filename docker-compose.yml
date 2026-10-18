@@ -12,9 +12,9 @@ services:
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_DATABASE: fleetpulse
-      MYSQL_USER: fleetpulse
-      MYSQL_PASSWORD: fleetpulse
+      MYSQL_DATABASE: dispatchx
+      MYSQL_USER: dispatchx
+      MYSQL_PASSWORD: dispatchx
       MYSQL_ROOT_PASSWORD: root
     ports: ["3306:3306"]
     volumes: [mysql-data:/var/lib/mysql]
@@ -34,7 +34,7 @@ services:
     <<: *backend
     command: api
     ports: ["8000:8000"]
-    volumes: [uploads:/tmp/fleetpulse-uploads]
+    volumes: [uploads:/tmp/dispatchx-uploads]
 
   worker:
     <<: *backend

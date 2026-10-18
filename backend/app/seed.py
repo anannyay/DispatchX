@@ -8,7 +8,7 @@ from app.db import SessionLocal
 from app.models import RiderProfile, Role, User
 from app.security import hash_password
 
-DEMO_PASSWORD = "fleetpulse123"
+DEMO_PASSWORD = "dispatchx123"
 
 
 def upsert(db, email, name, role, phone=None):
@@ -24,17 +24,17 @@ def upsert(db, email, name, role, phone=None):
 def main(n_riders: int, n_customers: int):
     pw = hash_password(DEMO_PASSWORD)
     with SessionLocal() as db:
-        upsert(db, "admin@fleetpulse.dev", "Admin", Role.admin)
-        upsert(db, "dispatch@fleetpulse.dev", "Dispatch Desk", Role.dispatcher)
-        upsert(db, "customer@fleetpulse.dev", "Demo Customer", Role.customer, "+910000000000")
-        upsert(db, "rider@fleetpulse.dev", "Demo Rider", Role.rider)
-        existing = {e for (e,) in db.query(User.email).filter(User.email.like("%@sim.fleetpulse.dev"))}
+        upsert(db, "admin@dispatchx.dev", "Admin", Role.admin)
+        upsert(db, "dispatch@dispatchx.dev", "Dispatch Desk", Role.dispatcher)
+        upsert(db, "customer@dispatchx.dev", "Demo Customer", Role.customer, "+910000000000")
+        upsert(db, "rider@dispatchx.dev", "Demo Rider", Role.rider)
+        existing = {e for (e,) in db.query(User.email).filter(User.email.like("%@sim.dispatchx.dev"))}
         for i in range(1, n_riders + 1):
-            email = f"rider{i}@sim.fleetpulse.dev"
+            email = f"rider{i}@sim.dispatchx.dev"
             if email not in existing:
                 db.add(User(email=email, name=f"Sim Rider {i}", role=Role.rider, password_hash=pw))
         for i in range(1, n_customers + 1):
-            email = f"customer{i}@sim.fleetpulse.dev"
+            email = f"customer{i}@sim.dispatchx.dev"
             if email not in existing:
                 db.add(User(email=email, name=f"Sim Customer {i}", role=Role.customer, password_hash=pw))
         db.flush()
