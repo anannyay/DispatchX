@@ -1,0 +1,63 @@
+# Full local stack: docker compose up --build
+# API + docs: http://localhost:8000/api/docs   Grafana: http://localhost:3001 (admin/admin)
+x-backend: &backend
+  build: ./backend
+  env_file: .env.local
+  depends_on:
+    mysql: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  restart: unless-stopped
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: fleetpulse
+      MYSQL_USER: fleetpulse
+      MYSQL_PASSWORD: fleetpulse
+      MYSQL_ROOT_PASSWORD: root
+    ports: ["3306:3306"]
+    volumes: [mysql-data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+  api:
+    <<: *backend
+    command: api
+    ports: ["8000:8000"]
+    volumes: [uploads:/tmp/fleetpulse-uploads]
+
+  worker:
+    <<: *backend
+    command: worker
+
+  beat:
+    <<: *backend
+    command: beat
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: [./monitoring/prometheus.local.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+
+volumes:
+  mysql-data:
+  uploads:
