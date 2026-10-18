@@ -1,7 +1,9 @@
 # DispatchX on AWS
 
 Everything is infrastructure as code (CloudFormation) and deployed by GitHub Actions.
-No AWS keys are stored in GitHub: the pipeline assumes an IAM role through OIDC.
+The pipeline authenticates with an IAM access key stored as encrypted GitHub Actions secrets
+(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). OIDC federation would be preferable, but the
+account's Free plan blocks `iam:CreateOpenIDConnectProvider`.
 
 ## Architecture
 
@@ -30,7 +32,7 @@ No AWS keys are stored in GitHub: the pipeline assumes an IAM role through OIDC.
 
 | Stack | File | Contents |
 |---|---|---|
-| bootstrap | `bootstrap.yml` | ECR repos, artifacts bucket, GitHub OIDC deploy role (deployed once by hand) |
+| bootstrap | `bootstrap.yml` | ECR repos and artifacts bucket (deployed once by hand) |
 | parent | `main.yml` | Wires the nested stacks together |
 | network | `stacks/network.yml` | VPC, 6 subnets in 2 AZs, IGW, NAT, route tables, data-tier NACL, S3 gateway endpoint, security groups, flow logs |
 | data | `stacks/data.yml` | RDS MySQL, ElastiCache, S3 buckets, Secrets Manager |
@@ -49,6 +51,8 @@ No AWS keys are stored in GitHub: the pipeline assumes an IAM role through OIDC.
 Invoke-WebRequest https://raw.githubusercontent.com/anannyay/DispatchX/main/infra/bootstrap.yml -OutFile bootstrap.yml
 aws cloudformation deploy --template-file bootstrap.yml --stack-name dispatchx-bootstrap --capabilities CAPABILITY_NAMED_IAM --region ap-southeast-2
 ```
+
+Then add the two repository secrets under GitHub → Settings → Secrets and variables → Actions.
 
 After that, every push to `main` that touches the app or infra runs **Test → Build images → Deploy → Seed → Smoke test**.
 The first deploy takes about 25–30 minutes (RDS, ElastiCache and CloudFront are the slow parts).
