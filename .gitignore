@@ -7,3 +7,4 @@ node_modules/
 *.db
 .pytest_cache/
 infra/out/
+frontend/.env.local

@@ -1,5 +1,5 @@
 # Full local stack: docker compose up --build
-# API + docs: http://localhost:8000/api/docs   Grafana: http://localhost:3001 (admin/admin)
+# App: http://localhost:3000   API docs: http://localhost:8000/api/docs   Grafana: http://localhost:3001 (admin/admin)
 x-backend: &backend
   build: ./backend
   env_file: .env.local
@@ -43,6 +43,14 @@ services:
   beat:
     <<: *backend
     command: beat
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports: ["3000:3000"]
+    depends_on: [api]
 
   prometheus:
     image: prom/prometheus:v2.54.1
