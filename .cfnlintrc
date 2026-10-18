@@ -4,3 +4,5 @@ ignore_templates:
   - infra/src/*.yml
 ignore_checks:
   - W3002
+regions:
+  - ap-southeast-2

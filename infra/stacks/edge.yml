@@ -31,7 +31,7 @@ Resources:
         Enabled: true
         HttpVersion: http2and3
         IPV6Enabled: true
-        PriceClass: PriceClass_200        # includes edge locations in India
+        PriceClass: PriceClass_200        # includes India and Australia edge locations
         Origins:
           - Id: alb
             DomainName: !Ref AlbDnsName

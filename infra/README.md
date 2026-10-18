@@ -47,7 +47,7 @@ No AWS keys are stored in GitHub: the pipeline assumes an IAM role through OIDC.
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/anannyay/DispatchX/main/infra/bootstrap.yml -OutFile bootstrap.yml
-aws cloudformation deploy --template-file bootstrap.yml --stack-name dispatchx-bootstrap --capabilities CAPABILITY_NAMED_IAM --region ap-south-1
+aws cloudformation deploy --template-file bootstrap.yml --stack-name dispatchx-bootstrap --capabilities CAPABILITY_NAMED_IAM --region ap-southeast-2
 ```
 
 After that, every push to `main` that touches the app or infra runs **Test → Build images → Deploy → Seed → Smoke test**.
@@ -65,7 +65,7 @@ Later deploys take about 8 minutes.
 | Grafana admin password | `aws secretsmanager get-secret-value --secret-id <GrafanaSecretArn output> --query SecretString --output text` |
 | Load test | `python simulator/simulator.py --base-url <AppUrl> --riders 300 --orders-per-min 120` |
 
-## Cost (ap-south-1, approximate)
+## Cost (ap-southeast-2 Sydney, approximate)
 
 | Item | Per day |
 |---|---|

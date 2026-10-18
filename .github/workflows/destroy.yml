@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ap-south-1
+  AWS_REGION: ap-southeast-2
   STACK: dispatchx
   ROLE_ARN: arn:aws:iam::216096907502:role/dispatchx-github-deploy
 

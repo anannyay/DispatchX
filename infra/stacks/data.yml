@@ -96,8 +96,8 @@ Resources:
       VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
       PubliclyAccessible: false
       BackupRetentionPeriod: !Ref DbBackupRetentionDays
-      PreferredBackupWindow: "20:00-20:30"          # 01:30 IST
-      PreferredMaintenanceWindow: "sun:21:00-sun:21:30"
+      PreferredBackupWindow: "16:00-16:30"          # 02:00-02:30 AEST
+      PreferredMaintenanceWindow: "sun:17:00-sun:17:30"
       CopyTagsToSnapshot: true
       AutoMinorVersionUpgrade: true
       DeletionProtection: false
