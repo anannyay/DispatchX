@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX bootstrap (deploy once by hand). ECR repositories for the container
+  images, an S3 bucket for packaged CloudFormation templates, and an IAM role
+  that GitHub Actions assumes through OIDC, so no long-lived AWS keys live in GitHub.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: anannyay
+  GitHubRepo:
+    Type: String
+    Default: DispatchX
+  CreateOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Set to false if this account already has the GitHub OIDC provider.
+
+Conditions:
+  MakeOidc: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  BackendRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: dispatchx/backend
+      EmptyOnDelete: true
+      ImageScanningConfiguration: { ScanOnPush: true }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+
+  WebRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: dispatchx/web
+      EmptyOnDelete: true
+      ImageScanningConfiguration: { ScanOnPush: true }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+
+  PrometheusRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: dispatchx/prometheus
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+
+  GrafanaRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: dispatchx/grafana
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-templates
+            Status: Enabled
+            ExpirationInDays: 30
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1]
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: dispatchx-github-deploy
+      MaxSessionDuration: 7200
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Only workflows from this one repository can assume the role
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOwner}/${GitHubRepo}:*
+                  - !Sub repo:${GitHubOwner}/dispatchx:*
+      ManagedPolicyArns:
+        # The pipeline creates VPCs, IAM roles, databases, etc. Scope down for production.
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+Outputs:
+  BackendRepoUri:
+    Value: !GetAtt BackendRepo.RepositoryUri
+    Export: { Name: dispatchx-backend-repo }
+  WebRepoUri:
+    Value: !GetAtt WebRepo.RepositoryUri
+    Export: { Name: dispatchx-web-repo }
+  PrometheusRepoUri:
+    Value: !GetAtt PrometheusRepo.RepositoryUri
+    Export: { Name: dispatchx-prometheus-repo }
+  GrafanaRepoUri:
+    Value: !GetAtt GrafanaRepo.RepositoryUri
+    Export: { Name: dispatchx-grafana-repo }
+  ArtifactsBucketName:
+    Value: !Ref ArtifactsBucket
+    Export: { Name: dispatchx-artifacts-bucket }
+  DeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn

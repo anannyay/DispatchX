@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -45,12 +46,14 @@ class Settings(BaseSettings):
     avg_speed_kmh: float = 22.0
 
     @property
-    def sqlalchemy_url(self) -> str:
+    def sqlalchemy_url(self) -> "str | URL":
         if self.database_url:
             return self.database_url
-        return (
-            f"mysql+pymysql://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}?charset=utf8mb4"
+        # URL.create escapes credentials, so any generated password is safe
+        return URL.create(
+            "mysql+pymysql", username=self.db_user, password=self.db_password,
+            host=self.db_host, port=self.db_port, database=self.db_name,
+            query={"charset": "utf8mb4"},
         )
 
     @property

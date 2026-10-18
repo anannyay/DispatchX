@@ -1,0 +1,366 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX network. A VPC across two Availability Zones with three subnet tiers:
+  public (ALB, NAT), private app (ECS hosts) and isolated data (RDS, ElastiCache,
+  no internet route at all). Chained security groups, a NACL on the data tier,
+  an S3 gateway endpoint and VPC flow logs.
+
+Parameters:
+  Project:
+    Type: String
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/16
+  CloudFrontPrefixListId:
+    Type: String
+    Default: ""
+    Description: com.amazonaws.global.cloudfront.origin-facing prefix list. Empty = allow ALB from anywhere.
+
+Conditions:
+  LockAlbToCloudFront: !Not [!Equals [!Ref CloudFrontPrefixListId, ""]]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub "${Project}-vpc" }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub "${Project}-igw" }]
+
+  IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # ---------- Subnets (a = first AZ, b = second AZ) ----------
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 64, 8]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${Project}-public-a" }]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 64, 8]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${Project}-public-b" }]
+  AppSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [10, !Cidr [!Ref VpcCidr, 64, 8]]
+      Tags: [{ Key: Name, Value: !Sub "${Project}-app-a" }]
+  AppSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [11, !Cidr [!Ref VpcCidr, 64, 8]]
+      Tags: [{ Key: Name, Value: !Sub "${Project}-app-b" }]
+  DataSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [20, !Cidr [!Ref VpcCidr, 64, 8]]
+      Tags: [{ Key: Name, Value: !Sub "${Project}-data-a" }]
+  DataSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [21, !Cidr [!Ref VpcCidr, 64, 8]]
+      Tags: [{ Key: Name, Value: !Sub "${Project}-data-b" }]
+
+  # ---------- Routing ----------
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: IgwAttachment
+    Properties:
+      Domain: vpc
+      Tags: [{ Key: Name, Value: !Sub "${Project}-nat-eip" }]
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags: [{ Key: Name, Value: !Sub "${Project}-nat" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${Project}-public-rt" }]
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable }
+  PublicAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable }
+
+  AppRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${Project}-app-rt" }]
+  AppDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref AppRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  AppAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref AppSubnetA, RouteTableId: !Ref AppRouteTable }
+  AppAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref AppSubnetB, RouteTableId: !Ref AppRouteTable }
+
+  # Data tier: local VPC routes only, no path to the internet
+  DataRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${Project}-data-rt" }]
+  DataAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref DataSubnetA, RouteTableId: !Ref DataRouteTable }
+  DataAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref DataSubnetB, RouteTableId: !Ref DataRouteTable }
+
+  # S3 traffic (image pulls layers, POD photos) stays on the AWS network and skips NAT charges
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref AppRouteTable, !Ref DataRouteTable]
+
+  # ---------- Data-tier NACL (stateless, second layer behind security groups) ----------
+  DataNacl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${Project}-data-nacl" }]
+  DataNaclInMysqlA:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 100
+      Protocol: 6
+      RuleAction: allow
+      CidrBlock: !GetAtt AppSubnetA.CidrBlock
+      PortRange: { From: 3306, To: 3306 }
+  DataNaclInMysqlB:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 101
+      Protocol: 6
+      RuleAction: allow
+      CidrBlock: !GetAtt AppSubnetB.CidrBlock
+      PortRange: { From: 3306, To: 3306 }
+  DataNaclInRedisA:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 110
+      Protocol: 6
+      RuleAction: allow
+      CidrBlock: !GetAtt AppSubnetA.CidrBlock
+      PortRange: { From: 6379, To: 6379 }
+  DataNaclInRedisB:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 111
+      Protocol: 6
+      RuleAction: allow
+      CidrBlock: !GetAtt AppSubnetB.CidrBlock
+      PortRange: { From: 6379, To: 6379 }
+  DataNaclInDataA:   # replication between data nodes (Multi-AZ RDS / Redis replicas)
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 120
+      Protocol: -1
+      RuleAction: allow
+      CidrBlock: !GetAtt DataSubnetA.CidrBlock
+  DataNaclInDataB:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 121
+      Protocol: -1
+      RuleAction: allow
+      CidrBlock: !GetAtt DataSubnetB.CidrBlock
+  DataNaclInEphemeral:   # return traffic for connections the data tier opens (e.g. S3 endpoint)
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 130
+      Protocol: 6
+      RuleAction: allow
+      CidrBlock: 0.0.0.0/0
+      PortRange: { From: 1024, To: 65535 }
+  DataNaclOutAll:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 100
+      Egress: true
+      Protocol: -1
+      RuleAction: allow
+      CidrBlock: !Ref VpcCidr
+  DataNaclOutHttps:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref DataNacl
+      RuleNumber: 110
+      Egress: true
+      Protocol: 6
+      RuleAction: allow
+      CidrBlock: 0.0.0.0/0
+      PortRange: { From: 443, To: 443 }
+  DataNaclAssocA:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties: { SubnetId: !Ref DataSubnetA, NetworkAclId: !Ref DataNacl }
+  DataNaclAssocB:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties: { SubnetId: !Ref DataSubnetB, NetworkAclId: !Ref DataNacl }
+
+  # ---------- Security groups (each tier only accepts traffic from the tier in front) ----------
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - HTTP from CloudFront only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - !If
+          - LockAlbToCloudFront
+          - { IpProtocol: tcp, FromPort: 80, ToPort: 80, SourcePrefixListId: !Ref CloudFrontPrefixListId, Description: CloudFront origin-facing }
+          - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: HTTP }
+      Tags: [{ Key: Name, Value: !Sub "${Project}-alb-sg" }]
+
+  EcsHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS container hosts - dynamic ports from the ALB
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 32768, ToPort: 65535, SourceSecurityGroupId: !Ref AlbSecurityGroup, Description: ALB to containers }
+      Tags: [{ Key: Name, Value: !Sub "${Project}-ecs-sg" }]
+
+  EcsHostSelfIngress:   # Prometheus scrapes API tasks on other hosts
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EcsHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref EcsHostSecurityGroup
+      Description: Host to host (metrics scraping)
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS MySQL - only from ECS hosts
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 3306, ToPort: 3306, SourceSecurityGroupId: !Ref EcsHostSecurityGroup }
+      Tags: [{ Key: Name, Value: !Sub "${Project}-db-sg" }]
+
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ElastiCache - only from ECS hosts
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 6379, ToPort: 6379, SourceSecurityGroupId: !Ref EcsHostSecurityGroup }
+      Tags: [{ Key: Name, Value: !Sub "${Project}-cache-sg" }]
+
+  CacheSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref CacheSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      SourceSecurityGroupId: !Ref CacheSecurityGroup
+      Description: Replica to primary
+
+  # ---------- VPC flow logs (rejected traffic only, keeps it cheap) ----------
+  FlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /${Project}/vpc-flow-logs
+      RetentionInDays: 3
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: vpc-flow-logs.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-flow-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource: !GetAtt FlowLogGroup.Arn
+  FlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref Vpc
+      ResourceType: VPC
+      TrafficType: REJECT
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+  VpcCidr:
+    Value: !Ref VpcCidr
+  PublicSubnets:
+    Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+  AppSubnets:
+    Value: !Join [",", [!Ref AppSubnetA, !Ref AppSubnetB]]
+  DataSubnets:
+    Value: !Join [",", [!Ref DataSubnetA, !Ref DataSubnetB]]
+  AlbSecurityGroup:
+    Value: !Ref AlbSecurityGroup
+  EcsHostSecurityGroup:
+    Value: !Ref EcsHostSecurityGroup
+  DatabaseSecurityGroup:
+    Value: !Ref DatabaseSecurityGroup
+  CacheSecurityGroup:
+    Value: !Ref CacheSecurityGroup

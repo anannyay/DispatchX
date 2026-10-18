@@ -1,0 +1,204 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+    paths: [backend/**, frontend/**, monitoring/**, infra/**, .github/workflows/deploy.yml]
+  workflow_dispatch:
+    inputs:
+      db_multi_az:
+        description: RDS Multi-AZ (standby in a second AZ)
+        type: choice
+        options: [keep, "true", "false"]
+        default: keep
+      cache_replicas:
+        description: ElastiCache replica with automatic failover
+        type: choice
+        options: [keep, "true", "false"]
+        default: keep
+      seed_riders:
+        description: Simulated rider accounts to seed
+        default: "300"
+
+concurrency:
+  group: deploy-dispatchx
+  cancel-in-progress: false
+
+permissions:
+  id-token: write   # OIDC: GitHub proves its identity to AWS, no stored keys
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  STACK: dispatchx
+  ROLE_ARN: arn:aws:iam::216096907502:role/dispatchx-github-deploy
+  ALERT_EMAIL: ""
+
+jobs:
+  test:
+    name: Test & lint
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt "python-socketio[client]==5.12.1" cfn-lint
+      - name: Lint CloudFormation
+        run: |
+          python infra/src/build.py
+          git diff --exit-code infra/stacks/app.yml || { echo "::error::infra/stacks/app.yml is stale, run infra/src/build.py"; exit 1; }
+          python infra/src/check_params.py
+          cfn-lint
+      - name: End-to-end smoke test (SQLite + Redis)
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+        run: |
+          alembic upgrade head
+          python -m app.seed --riders 5 --customers 2
+          uvicorn app.main:app --port 8000 > api.log 2>&1 &
+          celery -A app.workers.celery_app worker --pool=threads --concurrency=4 > worker.log 2>&1 &
+          sleep 6
+          if ! python tests/smoke_e2e.py; then
+            echo "::error title=Smoke test failed::$(tail -20 api.log | tr '\n' ' ')"
+            cat api.log worker.log
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.image }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { image: backend, context: backend }
+          - { image: web, context: frontend }
+          - { image: prometheus, context: monitoring/prometheus }
+          - { image: grafana, context: monitoring/grafana }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/dispatchx/${{ matrix.image }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/dispatchx/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    name: Deploy CloudFormation
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 7200
+      - run: pip install boto3 httpx "python-socketio[client]==5.12.1"
+
+      - name: Clear a previously failed first deploy
+        run: |
+          STATUS=$(aws cloudformation describe-stacks --stack-name $STACK --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo NONE)
+          echo "Current stack status: $STATUS"
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+            aws cloudformation delete-stack --stack-name $STACK
+            aws cloudformation wait stack-delete-complete --stack-name $STACK
+          fi
+
+      - name: Package & deploy stacks
+        run: |
+          ARTIFACTS=$(aws cloudformation list-exports --query "Exports[?Name=='dispatchx-artifacts-bucket'].Value" --output text)
+          PREFIX_LIST=$(aws ec2 describe-managed-prefix-lists \
+            --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
+            --query 'PrefixLists[0].PrefixListId' --output text)
+          OVERRIDES="ImageTag=${GITHUB_SHA} CloudFrontPrefixListId=${PREFIX_LIST} AlertEmail=${ALERT_EMAIL}"
+          [ "${{ inputs.db_multi_az }}" = "true" ] || [ "${{ inputs.db_multi_az }}" = "false" ] && OVERRIDES="$OVERRIDES DbMultiAZ=${{ inputs.db_multi_az }}"
+          [ "${{ inputs.cache_replicas }}" = "true" ] || [ "${{ inputs.cache_replicas }}" = "false" ] && OVERRIDES="$OVERRIDES CacheReplicas=${{ inputs.cache_replicas }}"
+          echo "Parameters: $OVERRIDES"
+          aws cloudformation package --template-file infra/main.yml \
+            --s3-bucket "$ARTIFACTS" --s3-prefix templates --output-template-file packaged.yml
+          aws cloudformation deploy --stack-name $STACK --template-file packaged.yml \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+            --parameter-overrides $OVERRIDES --no-fail-on-empty-changeset
+
+      - name: Diagnose failure (stack events)
+        if: failure()
+        run: python infra/scripts/diagnose.py events
+      - name: Diagnose failure (stopped tasks)
+        if: failure()
+        run: python infra/scripts/diagnose.py tasks
+      - name: Diagnose failure (service logs)
+        if: failure()
+        run: python infra/scripts/diagnose.py logs
+
+      - name: Read stack outputs
+        id: out
+        run: |
+          get() { aws cloudformation describe-stacks --stack-name $STACK --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          echo "url=$(get AppUrl)" >> $GITHUB_OUTPUT
+          echo "grafana=$(get GrafanaUrl)" >> $GITHUB_OUTPUT
+          echo "cluster=$(get ClusterName)" >> $GITHUB_OUTPUT
+          echo "taskdef=$(get ApiTaskDefinitionArn)" >> $GITHUB_OUTPUT
+          echo "cp=$(get CapacityProviderName)" >> $GITHUB_OUTPUT
+
+      - name: Seed demo accounts
+        run: |
+          RIDERS="${{ inputs.seed_riders || '300' }}"
+          OVERRIDES=$(printf '{"containerOverrides":[{"name":"api","command":["seed","--riders","%s","--customers","50"]}]}' "$RIDERS")
+          TASK=$(aws ecs run-task --cluster "${{ steps.out.outputs.cluster }}" \
+            --task-definition "${{ steps.out.outputs.taskdef }}" \
+            --capacity-provider-strategy capacityProvider=${{ steps.out.outputs.cp }},weight=1 \
+            --overrides "$OVERRIDES" --query 'tasks[0].taskArn' --output text)
+          echo "seed task: $TASK"
+          aws ecs wait tasks-stopped --cluster "${{ steps.out.outputs.cluster }}" --tasks "$TASK"
+          CODE=$(aws ecs describe-tasks --cluster "${{ steps.out.outputs.cluster }}" --tasks "$TASK" --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "seed exit code: $CODE"
+          [ "$CODE" = "0" ] || { echo "::error title=Seed failed::exit code $CODE"; exit 1; }
+
+      - name: Smoke test against production
+        run: |
+          for i in 1 2 3; do
+            BASE_URL="${{ steps.out.outputs.url }}" python backend/tests/smoke_e2e.py && exit 0
+            echo "attempt $i failed, retrying in 20s"; sleep 20
+          done
+          echo "::error title=Production smoke test failed::${{ steps.out.outputs.url }}"
+          exit 1
+
+      - name: Diagnose smoke failure
+        if: failure()
+        run: python infra/scripts/diagnose.py logs
+
+      - name: Publish URLs
+        if: always()
+        run: |
+          [ -n "${{ steps.out.outputs.url }}" ] && echo "::notice title=App URL::${{ steps.out.outputs.url }}"
+          [ -n "${{ steps.out.outputs.grafana }}" ] && echo "::notice title=Grafana::${{ steps.out.outputs.grafana }}"
+          {
+            echo "## DispatchX deployed"
+            echo "- App: ${{ steps.out.outputs.url }}"
+            echo "- Grafana: ${{ steps.out.outputs.grafana }}"
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+          } >> $GITHUB_STEP_SUMMARY

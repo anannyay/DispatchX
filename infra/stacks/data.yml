@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX data layer. RDS MySQL (optionally Multi-AZ), ElastiCache (Valkey,
+  Redis-compatible), S3 buckets for proof-of-delivery photos and the analytics
+  data lake, and Secrets Manager secrets for the DB and JWT signing key.
+
+Parameters:
+  Project:
+    Type: String
+  DataSubnets:
+    Type: CommaDelimitedList
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  DbMultiAZ:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  DbBackupRetentionDays:
+    Type: Number
+    Default: 1
+  CacheNodeType:
+    Type: String
+    Default: cache.t3.micro
+  CacheReplicas:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: true = primary + replica in another AZ with automatic failover
+
+Conditions:
+  CacheHA: !Equals [!Ref CacheReplicas, "true"]
+
+Resources:
+  # ---------- Secrets ----------
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: RDS master credentials (injected into ECS tasks, never in code)
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "dispatchx_admin"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true     # URL-safe in the SQLAlchemy connection string
+
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: HMAC key used to sign API access and refresh tokens
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  # ---------- RDS MySQL ----------
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DispatchX isolated data subnets
+      SubnetIds: !Ref DataSubnets
+
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: mysql8.4
+      Description: DispatchX MySQL tuning
+      Parameters:
+        character_set_server: utf8mb4
+        collation_server: utf8mb4_unicode_ci
+        slow_query_log: "1"
+        long_query_time: "1"
+        time_zone: UTC
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    # Fast teardown/rollback; the destroy workflow can take a final snapshot first
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub ${Project}-mysql
+      Engine: mysql
+      EngineVersion: "8.4.10"
+      DBInstanceClass: !Ref DbInstanceClass
+      DBName: dispatchx
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+      AllocatedStorage: "20"
+      StorageType: gp2
+      StorageEncrypted: true
+      MultiAZ: !Ref DbMultiAZ
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      DBParameterGroupName: !Ref DbParameterGroup
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      PubliclyAccessible: false
+      BackupRetentionPeriod: !Ref DbBackupRetentionDays
+      PreferredBackupWindow: "20:00-20:30"          # 01:30 IST
+      PreferredMaintenanceWindow: "sun:21:00-sun:21:30"
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+      DeletionProtection: false
+      EnableCloudwatchLogsExports: [error, slowquery]
+
+  DbSecretAttachment:   # adds host/port/engine to the secret so tools can discover the DB
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DbSecret
+      TargetId: !Ref Database
+      TargetType: AWS::RDS::DBInstance
+
+  # ---------- ElastiCache (Valkey 8, Redis protocol) ----------
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: DispatchX isolated data subnets
+      SubnetIds: !Ref DataSubnets
+
+  Cache:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: DispatchX geo-index, Socket.IO pub/sub, Celery broker
+      Engine: valkey
+      EngineVersion: "8.0"
+      CacheNodeType: !Ref CacheNodeType
+      NumCacheClusters: !If [CacheHA, 2, 1]
+      AutomaticFailoverEnabled: !If [CacheHA, true, false]
+      MultiAZEnabled: !If [CacheHA, true, false]
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds: [!Ref CacheSecurityGroup]
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: false
+      SnapshotRetentionLimit: 0
+      Port: 6379
+
+  # ---------- S3 ----------
+  PodBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration: { Status: Enabled }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        EventBridgeConfiguration: { EventBridgeEnabled: true }   # uploads trigger the POD Lambda
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [PUT, GET]
+            AllowedOrigins: ["*"]       # requests are authorised by short-lived presigned URLs
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: tier-old-photos
+            Status: Enabled
+            Transitions:
+              - { StorageClass: STANDARD_IA, TransitionInDays: 30 }
+              - { StorageClass: GLACIER_IR, TransitionInDays: 90 }
+            NoncurrentVersionExpiration: { NoncurrentDays: 30 }
+
+  PodBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PodBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt PodBucket.Arn, !Sub "${PodBucket.Arn}/*"]
+            Condition: { Bool: { aws:SecureTransport: "false" } }
+
+  DataLakeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: athena-results-cleanup
+            Status: Enabled
+            Prefix: athena-results/
+            ExpirationInDays: 7
+
+Outputs:
+  DbEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DbInstanceId:
+    Value: !Ref Database
+  DbSecretArn:
+    Value: !Ref DbSecret
+  JwtSecretArn:
+    Value: !Ref JwtSecret
+  CacheEndpoint:
+    Value: !GetAtt Cache.PrimaryEndPoint.Address
+  CacheId:
+    Value: !Ref Cache
+  PodBucketName:
+    Value: !Ref PodBucket
+  PodBucketArn:
+    Value: !GetAtt PodBucket.Arn
+  DataLakeBucketName:
+    Value: !Ref DataLakeBucket
+  DataLakeBucketArn:
+    Value: !GetAtt DataLakeBucket.Arn

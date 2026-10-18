@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX observability. CloudWatch dashboard covering every tier, plus
+  alarms (5xx, latency, unhealthy targets, dead-letter queues, database, cache
+  and container pressure) that notify the alerts SNS topic by email.
+
+Parameters:
+  Project:
+    Type: String
+  AlertsTopicArn:
+    Type: String
+  AlbFullName:
+    Type: String
+  ApiTargetGroupFullName:
+    Type: String
+  WebTargetGroupFullName:
+    Type: String
+  ClusterName:
+    Type: String
+  DbInstanceId:
+    Type: String
+  CacheId:
+    Type: String
+  DispatchQueueName:
+    Type: String
+  DlqNames:
+    Type: CommaDelimitedList
+
+Resources:
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${Project}-overview
+      DashboardBody: !Sub
+          - |
+            {
+              "widgets": [
+                {"type":"text","x":0,"y":0,"width":24,"height":1,
+                 "properties":{"markdown":"## DispatchX: edge → ALB → ECS → data tier"}},
+                {"type":"metric","x":0,"y":1,"width":8,"height":6,"properties":{
+                  "title":"ALB requests & errors","region":"${AWS::Region}","stat":"Sum","period":60,
+                  "metrics":[
+                    ["AWS/ApplicationELB","RequestCount","LoadBalancer","${AlbFullName}",{"label":"requests"}],
+                    [".","HTTPCode_Target_5XX_Count",".",".",{"label":"5xx","color":"#d62728"}],
+                    [".","HTTPCode_Target_4XX_Count",".",".",{"label":"4xx","color":"#ff7f0e"}]]}},
+                {"type":"metric","x":8,"y":1,"width":8,"height":6,"properties":{
+                  "title":"API latency","region":"${AWS::Region}","period":60,
+                  "metrics":[
+                    ["AWS/ApplicationELB","TargetResponseTime","TargetGroup","${ApiTargetGroupFullName}","LoadBalancer","${AlbFullName}",{"stat":"p50","label":"p50"}],
+                    ["...",{"stat":"p95","label":"p95"}],
+                    ["...",{"stat":"p99","label":"p99"}]]}},
+                {"type":"metric","x":16,"y":1,"width":8,"height":6,"properties":{
+                  "title":"Healthy targets","region":"${AWS::Region}","stat":"Minimum","period":60,
+                  "metrics":[
+                    ["AWS/ApplicationELB","HealthyHostCount","TargetGroup","${ApiTargetGroupFullName}","LoadBalancer","${AlbFullName}",{"label":"api"}],
+                    ["...","${WebTargetGroupFullName}",".",".",{"label":"web"}]]}},
+                {"type":"metric","x":0,"y":7,"width":8,"height":6,"properties":{
+                  "title":"ECS service CPU %","region":"${AWS::Region}","stat":"Average","period":60,
+                  "metrics":[
+                    ["AWS/ECS","CPUUtilization","ClusterName","${ClusterName}","ServiceName","api"],
+                    ["...","worker"],["...","consumer"],["...","web"]]}},
+                {"type":"metric","x":8,"y":7,"width":8,"height":6,"properties":{
+                  "title":"Running tasks & EC2 hosts (auto scaling)","region":"${AWS::Region}","stat":"Average","period":60,
+                  "metrics":[
+                    ["ECS/ContainerInsights","RunningTaskCount","ServiceName","api","ClusterName","${ClusterName}",{"label":"api tasks"}],
+                    ["...","consumer",".",".",{"label":"consumer tasks"}],
+                    ["ECS/ContainerInsights","ContainerInstanceCount","ClusterName","${ClusterName}",{"label":"EC2 hosts"}]]}},
+                {"type":"metric","x":16,"y":7,"width":8,"height":6,"properties":{
+                  "title":"SQS dispatch backlog & DLQs","region":"${AWS::Region}","stat":"Maximum","period":60,
+                  "metrics":[
+                    ["AWS/SQS","ApproximateNumberOfMessagesVisible","QueueName","${DispatchQueueName}",{"label":"dispatch backlog"}],
+                    ["...","${DispatchDlqName}",{"label":"dispatch DLQ","color":"#d62728"}],
+                    ["...","${NotifyDlqName}",{"label":"notify DLQ"}],
+                    ["...","${AnalyticsDlqName}",{"label":"analytics DLQ"}]]}},
+                {"type":"metric","x":0,"y":13,"width":8,"height":6,"properties":{
+                  "title":"RDS MySQL","region":"${AWS::Region}","period":60,
+                  "metrics":[
+                    ["AWS/RDS","CPUUtilization","DBInstanceIdentifier","${DbInstanceId}",{"stat":"Average","label":"CPU %"}],
+                    [".","DatabaseConnections",".",".",{"stat":"Maximum","label":"connections","yAxis":"right"}]]}},
+                {"type":"metric","x":8,"y":13,"width":8,"height":6,"properties":{
+                  "title":"ElastiCache","region":"${AWS::Region}","period":60,
+                  "metrics":[
+                    ["AWS/ElastiCache","EngineCPUUtilization","CacheClusterId","${CacheId}-001",{"stat":"Average","label":"engine CPU %"}],
+                    [".","CurrConnections",".",".",{"stat":"Maximum","label":"connections","yAxis":"right"}]]}},
+                {"type":"alarm","x":16,"y":13,"width":8,"height":6,"properties":{
+                  "title":"Alarms","alarms":[
+                    "${Api5xxAlarm.Arn}","${ApiLatencyAlarm.Arn}","${ApiUnhealthyAlarm.Arn}",
+                    "${DispatchDlqAlarm.Arn}","${RdsCpuAlarm.Arn}","${ApiCpuAlarm.Arn}"]}}
+              ]
+            }
+          - DispatchDlqName: !Select [0, !Ref DlqNames]
+            NotifyDlqName: !Select [1, !Ref DlqNames]
+            AnalyticsDlqName: !Select [2, !Ref DlqNames]
+
+  Api5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-api-5xx
+      AlarmDescription: API returning server errors
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - { Name: LoadBalancer, Value: !Ref AlbFullName }
+        - { Name: TargetGroup, Value: !Ref ApiTargetGroupFullName }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopicArn]
+      OKActions: [!Ref AlertsTopicArn]
+
+  ApiLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-api-latency-p95
+      AlarmDescription: API p95 latency above 1.5 s
+      Namespace: AWS/ApplicationELB
+      MetricName: TargetResponseTime
+      Dimensions:
+        - { Name: LoadBalancer, Value: !Ref AlbFullName }
+        - { Name: TargetGroup, Value: !Ref ApiTargetGroupFullName }
+      ExtendedStatistic: p95
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 1.5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopicArn]
+      OKActions: [!Ref AlertsTopicArn]
+
+  ApiUnhealthyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-api-unhealthy-targets
+      AlarmDescription: One or more API tasks failing ALB health checks
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !Ref AlbFullName }
+        - { Name: TargetGroup, Value: !Ref ApiTargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopicArn]
+      OKActions: [!Ref AlertsTopicArn]
+
+  DispatchDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-dispatch-dlq
+      AlarmDescription: Messages failed processing and landed in the dispatch dead-letter queue
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{ Name: QueueName, Value: !Select [0, !Ref DlqNames] }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopicArn]
+
+  NotifyDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-notify-dlq
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{ Name: QueueName, Value: !Select [1, !Ref DlqNames] }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopicArn]
+
+  AnalyticsDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-analytics-dlq
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{ Name: QueueName, Value: !Select [2, !Ref DlqNames] }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopicArn]
+
+  RdsCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-rds-cpu
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DbInstanceId }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!Ref AlertsTopicArn]
+      OKActions: [!Ref AlertsTopicArn]
+
+  RdsStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-rds-low-storage
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref DbInstanceId }]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 2147483648
+      ComparisonOperator: LessThanThreshold
+      AlarmActions: [!Ref AlertsTopicArn]
+
+  ApiCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-api-cpu
+      AlarmDescription: API service CPU saturated even after auto scaling
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - { Name: ClusterName, Value: !Ref ClusterName }
+        - { Name: ServiceName, Value: api }
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!Ref AlertsTopicArn]
+      OKActions: [!Ref AlertsTopicArn]
+
+  CacheMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Project}-cache-memory
+      Namespace: AWS/ElastiCache
+      MetricName: DatabaseMemoryUsagePercentage
+      Dimensions: [{ Name: CacheClusterId, Value: !Sub "${CacheId}-001" }]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!Ref AlertsTopicArn]
+
+Outputs:
+  DashboardName:
+    Value: !Ref Dashboard

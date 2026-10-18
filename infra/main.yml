@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX: real-time delivery & dispatch platform. Parent stack that
+  composes the network, data, messaging, compute, edge, analytics and
+  observability nested stacks. Deployed by GitHub Actions
+  (.github/workflows/deploy.yml) after `aws cloudformation package`.
+
+Parameters:
+  Project:
+    Type: String
+    Default: dispatchx
+  ImageTag:
+    Type: String
+    Description: Container image tag (git commit SHA) built by the pipeline
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Receives CloudWatch alarms and customer notification emails
+  CloudFrontPrefixListId:
+    Type: String
+    Default: ""
+  DbMultiAZ:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  CacheReplicas:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  InstanceType:
+    Type: String
+    Default: t3.small
+  AsgMinSize:
+    Type: Number
+    Default: 2
+  AsgMaxSize:
+    Type: Number
+    Default: 4
+  EnableWaf:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+
+Resources:
+  Network:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/network.yml
+      Parameters:
+        Project: !Ref Project
+        CloudFrontPrefixListId: !Ref CloudFrontPrefixListId
+
+  Data:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/data.yml
+      Parameters:
+        Project: !Ref Project
+        DataSubnets: !GetAtt Network.Outputs.DataSubnets
+        DatabaseSecurityGroup: !GetAtt Network.Outputs.DatabaseSecurityGroup
+        CacheSecurityGroup: !GetAtt Network.Outputs.CacheSecurityGroup
+        DbMultiAZ: !Ref DbMultiAZ
+        CacheReplicas: !Ref CacheReplicas
+
+  Messaging:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/messaging.yml
+      Parameters:
+        Project: !Ref Project
+        AlertEmail: !Ref AlertEmail
+
+  App:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/app.yml
+      Parameters:
+        Project: !Ref Project
+        VpcId: !GetAtt Network.Outputs.VpcId
+        PublicSubnets: !GetAtt Network.Outputs.PublicSubnets
+        AppSubnets: !GetAtt Network.Outputs.AppSubnets
+        AlbSecurityGroup: !GetAtt Network.Outputs.AlbSecurityGroup
+        EcsHostSecurityGroup: !GetAtt Network.Outputs.EcsHostSecurityGroup
+        ImageTag: !Ref ImageTag
+        BackendImage: !ImportValue dispatchx-backend-repo
+        WebImage: !ImportValue dispatchx-web-repo
+        PrometheusImage: !ImportValue dispatchx-prometheus-repo
+        GrafanaImage: !ImportValue dispatchx-grafana-repo
+        DbEndpoint: !GetAtt Data.Outputs.DbEndpoint
+        DbSecretArn: !GetAtt Data.Outputs.DbSecretArn
+        JwtSecretArn: !GetAtt Data.Outputs.JwtSecretArn
+        CacheEndpoint: !GetAtt Data.Outputs.CacheEndpoint
+        PodBucketName: !GetAtt Data.Outputs.PodBucketName
+        PodBucketArn: !GetAtt Data.Outputs.PodBucketArn
+        OrderEventsTopicArn: !GetAtt Messaging.Outputs.OrderEventsTopicArn
+        NotifyTopicArn: !GetAtt Messaging.Outputs.NotifyTopicArn
+        DispatchQueueUrl: !GetAtt Messaging.Outputs.DispatchQueueUrl
+        DispatchQueueArn: !GetAtt Messaging.Outputs.DispatchQueueArn
+        DispatchQueueName: !GetAtt Messaging.Outputs.DispatchQueueName
+        NotifyQueueUrl: !GetAtt Messaging.Outputs.NotifyQueueUrl
+        NotifyQueueArn: !GetAtt Messaging.Outputs.NotifyQueueArn
+        # Stable per-stack secret (the UUID in the stack ID) shared by CloudFront and the ALB
+        OriginVerifySecret: !Select [2, !Split ["/", !Ref AWS::StackId]]
+        InstanceType: !Ref InstanceType
+        AsgMinSize: !Ref AsgMinSize
+        AsgMaxSize: !Ref AsgMaxSize
+        EnableWaf: !Ref EnableWaf
+
+  Edge:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/edge.yml
+      Parameters:
+        Project: !Ref Project
+        AlbDnsName: !GetAtt App.Outputs.AlbDnsName
+        OriginVerifySecret: !Select [2, !Split ["/", !Ref AWS::StackId]]
+
+  Analytics:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/analytics.yml
+      Parameters:
+        Project: !Ref Project
+        AnalyticsQueueArn: !GetAtt Messaging.Outputs.AnalyticsQueueArn
+        DataLakeBucketName: !GetAtt Data.Outputs.DataLakeBucketName
+        DataLakeBucketArn: !GetAtt Data.Outputs.DataLakeBucketArn
+        PodBucketName: !GetAtt Data.Outputs.PodBucketName
+        PodBucketArn: !GetAtt Data.Outputs.PodBucketArn
+
+  Observability:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stacks/observability.yml
+      Parameters:
+        Project: !Ref Project
+        AlertsTopicArn: !GetAtt Messaging.Outputs.AlertsTopicArn
+        AlbFullName: !GetAtt App.Outputs.AlbFullName
+        ApiTargetGroupFullName: !GetAtt App.Outputs.ApiTargetGroupFullName
+        WebTargetGroupFullName: !GetAtt App.Outputs.WebTargetGroupFullName
+        ClusterName: !GetAtt App.Outputs.ClusterName
+        DbInstanceId: !GetAtt Data.Outputs.DbInstanceId
+        CacheId: !GetAtt Data.Outputs.CacheId
+        DispatchQueueName: !GetAtt Messaging.Outputs.DispatchQueueName
+        DlqNames: !GetAtt Messaging.Outputs.DlqNames
+
+Outputs:
+  AppUrl:
+    Description: Public URL (CloudFront, HTTPS)
+    Value: !Sub https://${Edge.Outputs.DistributionDomainName}
+  GrafanaUrl:
+    Value: !Sub https://${Edge.Outputs.DistributionDomainName}/grafana/
+  CloudWatchDashboard:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Project}-overview
+  ClusterName:
+    Value: !GetAtt App.Outputs.ClusterName
+  ApiTaskDefinitionArn:
+    Value: !GetAtt App.Outputs.ApiTaskDefinitionArn
+  CapacityProviderName:
+    Value: !GetAtt App.Outputs.CapacityProviderName
+  AutoScalingGroupName:
+    Value: !GetAtt App.Outputs.AutoScalingGroupName
+  PodBucketName:
+    Value: !GetAtt Data.Outputs.PodBucketName
+  DataLakeBucketName:
+    Value: !GetAtt Data.Outputs.DataLakeBucketName
+  DbInstanceId:
+    Value: !GetAtt Data.Outputs.DbInstanceId
+  CacheId:
+    Value: !GetAtt Data.Outputs.CacheId
+  GrafanaSecretArn:
+    Value: !GetAtt App.Outputs.GrafanaSecretArn
+  AthenaWorkGroup:
+    Value: !GetAtt Analytics.Outputs.AthenaWorkGroup
+  DistributionId:
+    Value: !GetAtt Edge.Outputs.DistributionId

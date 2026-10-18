@@ -1,0 +1,68 @@
+name: Destroy AWS stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "destroy" to delete the whole DispatchX stack
+        required: true
+      final_snapshot:
+        description: Take a final RDS snapshot before deleting
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  STACK: dispatchx
+  ROLE_ARN: arn:aws:iam::216096907502:role/dispatchx-github-deploy
+
+jobs:
+  destroy:
+    if: inputs.confirm == 'destroy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 7200
+      - run: pip install boto3
+
+      - name: Final database snapshot
+        if: inputs.final_snapshot
+        run: |
+          ID=dispatchx-final-$(date +%Y%m%d-%H%M)
+          aws rds create-db-snapshot --db-instance-identifier dispatchx-mysql --db-snapshot-identifier $ID
+          aws rds wait db-snapshot-available --db-snapshot-identifier $ID
+          echo "::notice title=Snapshot::$ID"
+
+      - name: Empty S3 buckets (including old versions)
+        run: |
+          python - <<'PY'
+          import boto3
+          cf, s3 = boto3.client("cloudformation"), boto3.resource("s3")
+          try:
+              outs = cf.describe_stacks(StackName="dispatchx")["Stacks"][0].get("Outputs", [])
+          except Exception as e:
+              print(e); outs = []
+          for o in outs:
+              if o["OutputKey"] in ("PodBucketName", "DataLakeBucketName"):
+                  print("emptying", o["OutputValue"])
+                  s3.Bucket(o["OutputValue"]).object_versions.delete()
+          PY
+
+      - name: Delete stack
+        run: |
+          aws cloudformation delete-stack --stack-name $STACK
+          aws cloudformation wait stack-delete-complete --stack-name $STACK
+          echo "::notice title=Destroyed::DispatchX stack deleted. ECR images and the bootstrap stack are kept."
+
+      - name: Diagnose failure
+        if: failure()
+        run: python infra/scripts/diagnose.py events

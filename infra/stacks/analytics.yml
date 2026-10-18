@@ -1,0 +1,297 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX serverless + data engineering. A Lambda drains the analytics SQS
+  queue into an S3 data lake (newline-delimited JSON, partitioned by day), Glue
+  catalogs it with partition projection, and Athena queries it with SQL. A
+  second Lambda, triggered by S3 -> EventBridge, validates proof-of-delivery photos.
+
+Parameters:
+  Project:
+    Type: String
+  AnalyticsQueueArn:
+    Type: String
+  DataLakeBucketName:
+    Type: String
+  DataLakeBucketArn:
+    Type: String
+  PodBucketName:
+    Type: String
+  PodBucketArn:
+    Type: String
+
+Resources:
+  # ---------- Event stream -> data lake ----------
+  AnalyticsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: analytics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !Ref AnalyticsQueueArn
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${DataLakeBucketArn}/events/*
+
+  AnalyticsFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/aws/lambda/${Project}-analytics-ingest", RetentionInDays: 7 }
+
+  AnalyticsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: AnalyticsFunctionLogs
+    Properties:
+      FunctionName: !Sub ${Project}-analytics-ingest
+      Description: Writes order events from SQS to the S3 data lake for Athena
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 30
+      MemorySize: 128
+      Role: !GetAtt AnalyticsFunctionRole.Arn
+      Environment:
+        Variables: { BUCKET: !Ref DataLakeBucketName }
+      Code:
+        ZipFile: |
+          import datetime, json, os, uuid
+          import boto3
+
+          s3 = boto3.client("s3")
+          BUCKET = os.environ["BUCKET"]
+
+          def handler(event, context):
+              rows = []
+              for rec in event["Records"]:
+                  msg = json.loads(rec["body"])
+                  if "TopicArn" in msg and "Message" in msg:   # non-raw SNS envelope
+                      msg = json.loads(msg["Message"])
+                  p = msg.get("payload", {})
+                  rows.append({
+                      "event_type": msg.get("event_type"),
+                      "occurred_at": msg.get("occurred_at"),
+                      "order_id": p.get("order_id"),
+                      "customer_id": p.get("customer_id"),
+                      "rider_id": p.get("rider_id"),
+                      "distance_km": p.get("distance_km"),
+                      "price": p.get("price"),
+                      "assign_seconds": p.get("assign_seconds"),
+                      "payload": json.dumps(p),
+                  })
+              if not rows:
+                  return {"written": 0}
+              now = datetime.datetime.now(datetime.timezone.utc)
+              key = f"events/dt={now:%Y-%m-%d}/{now:%H%M%S}-{uuid.uuid4().hex[:8]}.json"
+              body = "\n".join(json.dumps(r) for r in rows).encode()
+              s3.put_object(Bucket=BUCKET, Key=key, Body=body, ContentType="application/x-ndjson")
+              print(f"wrote {len(rows)} events to s3://{BUCKET}/{key}")
+              return {"written": len(rows), "key": key}
+
+  AnalyticsEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref AnalyticsFunction
+      EventSourceArn: !Ref AnalyticsQueueArn
+      BatchSize: 50
+      MaximumBatchingWindowInSeconds: 20     # fewer, larger files in S3
+
+  # ---------- Glue catalog + Athena ----------
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: dispatchx_analytics
+        Description: DispatchX order event data lake
+
+  OrderEventsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: order_events
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: json
+          projection.enabled: "true"            # no crawler needed: partitions are computed
+          projection.dt.type: date
+          projection.dt.format: yyyy-MM-dd
+          projection.dt.range: 2026-01-01,NOW
+          projection.dt.interval: "1"
+          projection.dt.interval.unit: DAYS
+          storage.location.template: !Sub "s3://${DataLakeBucketName}/events/dt=${!dt}/"
+        PartitionKeys:
+          - { Name: dt, Type: string }
+        StorageDescriptor:
+          Location: !Sub s3://${DataLakeBucketName}/events/
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: event_type, Type: string }
+            - { Name: occurred_at, Type: string }
+            - { Name: order_id, Type: int }
+            - { Name: customer_id, Type: int }
+            - { Name: rider_id, Type: int }
+            - { Name: distance_km, Type: double }
+            - { Name: price, Type: double }
+            - { Name: assign_seconds, Type: double }
+            - { Name: payload, Type: string }
+
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub ${Project}-analytics
+      RecursiveDeleteOption: true
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        BytesScannedCutoffPerQuery: 1073741824     # 1 GB guardrail
+        ResultConfiguration:
+          OutputLocation: !Sub s3://${DataLakeBucketName}/athena-results/
+
+  QueryOrdersPerHour:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Orders and GMV per hour (last 7 days)
+      Database: !Ref GlueDatabase
+      WorkGroup: !Ref AthenaWorkGroup
+      QueryString: |
+        SELECT date_trunc('hour', from_iso8601_timestamp(occurred_at)) AS hour,
+               count(*) AS orders,
+               round(sum(price), 0) AS gmv_inr,
+               round(avg(distance_km), 2) AS avg_km
+        FROM order_events
+        WHERE event_type = 'order.created'
+          AND dt >= date_format(current_date - interval '7' day, '%Y-%m-%d')
+        GROUP BY 1 ORDER BY 1;
+
+  QueryFunnel:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Order funnel today
+      Database: !Ref GlueDatabase
+      WorkGroup: !Ref AthenaWorkGroup
+      QueryString: |
+        SELECT event_type, count(*) AS events
+        FROM order_events
+        WHERE dt = date_format(current_date, '%Y-%m-%d')
+        GROUP BY 1 ORDER BY 2 DESC;
+
+  QueryAssignLatency:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Rider assignment latency percentiles
+      Database: !Ref GlueDatabase
+      WorkGroup: !Ref AthenaWorkGroup
+      QueryString: |
+        SELECT count(*) AS assignments,
+               round(approx_percentile(assign_seconds, 0.50), 2) AS p50_s,
+               round(approx_percentile(assign_seconds, 0.95), 2) AS p95_s,
+               round(max(assign_seconds), 2) AS max_s
+        FROM order_events
+        WHERE event_type = 'order.assigned' AND assign_seconds IS NOT NULL;
+
+  QueryTopRiders:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Top riders by deliveries
+      Database: !Ref GlueDatabase
+      WorkGroup: !Ref AthenaWorkGroup
+      QueryString: |
+        SELECT rider_id, count(*) AS deliveries
+        FROM order_events
+        WHERE event_type = 'order.delivered'
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
+
+  # ---------- Proof-of-delivery validation (S3 -> EventBridge -> Lambda) ----------
+  PodFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: tag-pod-objects
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObjectTagging]
+                Resource: !Sub ${PodBucketArn}/pod/*
+
+  PodFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/aws/lambda/${Project}-pod-validator", RetentionInDays: 7 }
+
+  PodFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PodFunctionLogs
+    Properties:
+      FunctionName: !Sub ${Project}-pod-validator
+      Description: Validates and tags proof-of-delivery uploads
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 15
+      MemorySize: 128
+      Role: !GetAtt PodFunctionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+
+          s3 = boto3.client("s3")
+          MAX_BYTES = 8 * 1024 * 1024
+          ALLOWED = {"image/jpeg", "image/png", "image/webp"}
+
+          def handler(event, context):
+              d = event["detail"]
+              bucket, key = d["bucket"]["name"], d["object"]["key"]
+              head = s3.head_object(Bucket=bucket, Key=key)
+              size, ctype = head["ContentLength"], head.get("ContentType")
+              valid = size <= MAX_BYTES and ctype in ALLOWED
+              s3.put_object_tagging(Bucket=bucket, Key=key, Tagging={"TagSet": [
+                  {"Key": "validated", "Value": "true" if valid else "false"},
+              ]})
+              print(("ACCEPTED" if valid else "REJECTED") + f" {key} size={size} type={ctype}")
+              return {"key": key, "valid": valid}
+
+  PodUploadedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Proof-of-delivery photo uploaded
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket: { name: [!Ref PodBucketName] }
+          object: { key: [{ prefix: pod/ }] }
+      Targets:
+        - { Id: pod-validator, Arn: !GetAtt PodFunction.Arn }
+
+  PodFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PodFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PodUploadedRule.Arn
+
+Outputs:
+  AthenaWorkGroup:
+    Value: !Ref AthenaWorkGroup
+  AnalyticsFunctionName:
+    Value: !Ref AnalyticsFunction

@@ -8,7 +8,8 @@ case "$1" in
       --forwarded-allow-ips='*' --workers "${UVICORN_WORKERS:-1}"
     ;;
   worker)
-    exec celery -A app.workers.celery_app worker --loglevel=INFO --concurrency="${CELERY_CONCURRENCY:-4}"
+    exec celery -A app.workers.celery_app worker --loglevel=INFO \
+      --pool="${CELERY_POOL:-prefork}" --concurrency="${CELERY_CONCURRENCY:-4}"
     ;;
   beat)
     exec celery -A app.workers.celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule

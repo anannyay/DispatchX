@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DispatchX decoupled messaging. One SNS topic for domain events fans out to
+  three SQS queues (dispatch, notify, analytics), each with a subscription
+  filter policy and a dead-letter queue. Separate SNS topics deliver customer
+  notifications and operational alarms by email.
+
+Parameters:
+  Project:
+    Type: String
+  AlertEmail:
+    Type: String
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Resources:
+  OrderEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${Project}-order-events
+      DisplayName: DispatchX order events
+
+  NotifyTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${Project}-customer-notifications
+      DisplayName: DispatchX
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${Project}-alerts
+      DisplayName: DispatchX alerts
+
+  NotifyEmail:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref NotifyTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  AlertsEmail:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ---------- Dispatch queue ----------
+  DispatchDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${Project}-dispatch-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+  DispatchQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${Project}-dispatch
+      VisibilityTimeout: 60
+      ReceiveMessageWaitTimeSeconds: 20
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DispatchDlq.Arn
+        maxReceiveCount: 5
+
+  # ---------- Notify queue ----------
+  NotifyDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${Project}-notify-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+  NotifyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${Project}-notify
+      VisibilityTimeout: 60
+      ReceiveMessageWaitTimeSeconds: 20
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotifyDlq.Arn
+        maxReceiveCount: 5
+
+  # ---------- Analytics queue (consumed by Lambda) ----------
+  AnalyticsDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${Project}-analytics-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+  AnalyticsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${Project}-analytics
+      VisibilityTimeout: 180          # 6x the Lambda timeout, per AWS guidance
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt AnalyticsDlq.Arn
+        maxReceiveCount: 5
+
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref DispatchQueue, !Ref NotifyQueue, !Ref AnalyticsQueue]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowOrderEventsTopic
+            Effect: Allow
+            Principal: { Service: sns.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: [!GetAtt DispatchQueue.Arn, !GetAtt NotifyQueue.Arn, !GetAtt AnalyticsQueue.Arn]
+            Condition:
+              ArnEquals: { aws:SourceArn: !Ref OrderEventsTopic }
+
+  # ---------- Fan-out subscriptions with filter policies ----------
+  DispatchSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref OrderEventsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt DispatchQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event_type: [order.created, order.pending, order.delivered, order.cancelled]
+
+  NotifySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref OrderEventsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt NotifyQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event_type: [order.created, order.assigned, order.picked_up, order.delivered, order.cancelled, order.unassigned]
+
+  AnalyticsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref OrderEventsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt AnalyticsQueue.Arn
+      RawMessageDelivery: true
+
+Outputs:
+  OrderEventsTopicArn:
+    Value: !Ref OrderEventsTopic
+  NotifyTopicArn:
+    Value: !Ref NotifyTopic
+  AlertsTopicArn:
+    Value: !Ref AlertsTopic
+  DispatchQueueUrl:
+    Value: !Ref DispatchQueue
+  DispatchQueueArn:
+    Value: !GetAtt DispatchQueue.Arn
+  DispatchQueueName:
+    Value: !GetAtt DispatchQueue.QueueName
+  NotifyQueueUrl:
+    Value: !Ref NotifyQueue
+  NotifyQueueArn:
+    Value: !GetAtt NotifyQueue.Arn
+  AnalyticsQueueArn:
+    Value: !GetAtt AnalyticsQueue.Arn
+  DlqNames:
+    Value: !Join [",", [!GetAtt DispatchDlq.QueueName, !GetAtt NotifyDlq.QueueName, !GetAtt AnalyticsDlq.QueueName]]

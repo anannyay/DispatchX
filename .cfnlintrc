@@ -1,0 +1,6 @@
+templates:
+  - infra/**/*.yml
+ignore_templates:
+  - infra/src/*.yml
+ignore_checks:
+  - W3002
