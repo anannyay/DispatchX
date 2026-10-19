@@ -8,3 +8,4 @@ node_modules/
 .pytest_cache/
 infra/out/
 frontend/.env.local
+dump.rdb
