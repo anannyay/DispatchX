@@ -18,9 +18,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install kind
         run: |
-          curl -sSLo /usr/local/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/v0.24.0/kind-linux-amd64
-          chmod +x /usr/local/bin/kind
-          kind version && kubectl version --client
+          if ! command -v kind >/dev/null; then
+            curl -sSLo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.24.0/kind-linux-amd64
+            sudo install -m 0755 kind /usr/local/bin/kind
+          fi
+          kind version
+          kubectl version --client
       - name: k8s/up.sh (the same script the team runs locally)
         run: ./k8s/up.sh
       - uses: actions/setup-python@v5
