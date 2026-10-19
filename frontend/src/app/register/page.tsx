@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Logo } from "@/components/Navbar";
+import { Wordmark } from "@/components/Navbar";
 import { Button, Input, Spinner } from "@/components/ui";
 import { homeFor, useAuth } from "@/lib/auth";
 
@@ -34,20 +34,16 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-slate-50 px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex justify-center"><Logo /></div>
-        <form onSubmit={submit} className="space-y-4 rounded-2xl bg-white p-6 shadow-card ring-1 ring-slate-200">
-          <h1 className="text-xl font-semibold">Create your account</h1>
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+    <div className="grid min-h-screen place-items-center bg-k-canvas px-4 py-10">
+      <div className="w-full max-w-[380px]">
+        <div className="mb-6"><Wordmark /></div>
+        <form onSubmit={submit} className="k-panel space-y-4 p-5">
+          <h1 className="text-base font-semibold text-k-hi">Create account</h1>
+          <div className="grid grid-cols-2 rounded bg-k-panel p-0.5">
             {(["customer", "rider"] as const).map((r) => (
-              <button
-                type="button"
-                key={r}
-                onClick={() => setForm({ ...form, role: r })}
-                className={`rounded-lg py-2 text-sm font-medium transition ${form.role === r ? "bg-white shadow text-slate-900" : "text-slate-500"}`}
-              >
-                {r === "customer" ? "📦 I want to send" : "🛵 I want to ride"}
+              <button type="button" key={r} onClick={() => setForm({ ...form, role: r })}
+                className={`rounded-[2px] py-1.5 text-xs font-semibold transition ${form.role === r ? "bg-k-hover text-k-hi" : "text-k-label hover:text-k-text"}`}>
+                {r === "customer" ? "Customer" : "Rider"}
               </button>
             ))}
           </div>
@@ -55,10 +51,10 @@ export default function RegisterPage() {
           <Input label="Email" type="email" required value={form.email} onChange={set("email")} />
           <Input label="Phone (optional)" value={form.phone} onChange={set("phone")} />
           <Input label="Password" type="password" required minLength={6} value={form.password} onChange={set("password")} />
-          {error && <p className="text-sm text-rose-600">{error}</p>}
-          <Button type="submit" disabled={busy} className="w-full">{busy ? <Spinner className="h-4 w-4" /> : "Create account"}</Button>
-          <p className="text-center text-sm text-slate-500">
-            Already have an account? <Link href="/login" className="font-medium text-brand-600 hover:underline">Log in</Link>
+          {error && <p className="text-xs text-k-err">{error}</p>}
+          <Button type="submit" disabled={busy} className="w-full">{busy ? <Spinner /> : "Create account"}</Button>
+          <p className="text-center text-xs text-k-label">
+            Already registered? <Link href="/login" className="text-k-accent hover:underline">Sign in</Link>
           </p>
         </form>
       </div>

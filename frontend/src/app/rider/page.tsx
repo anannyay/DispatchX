@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import Navbar from "@/components/Navbar";
 import RequireRole from "@/components/RequireRole";
-import { Button, Card, Spinner } from "@/components/ui";
+import { Camera, Check, Crosshair, Navigation, Pause, Play } from "lucide-react";
+import { Button, Spinner } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { CITY_CENTER, haversineKm, inr } from "@/lib/format";
 import { getSocket, useSocketEvent } from "@/lib/socket";
@@ -100,7 +101,6 @@ function RiderApp() {
 
   useSocketEvent<Offer>("job:offer", useCallback((o: Offer) => {
     setOffer(o);
-    try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=").play().catch(() => {}); } catch { /* ignore */ }
   }, []));
   useSocketEvent<{ order_id: number }>("job:offer_closed", useCallback((d: { order_id: number }) => {
     setOffer((o) => (o && o.order.id === d.order_id ? null : o));
@@ -208,88 +208,95 @@ function RiderApp() {
   const distToTarget = target ? haversineKm(pos, target) : null;
   const arrived = distToTarget !== null && distToTarget < 0.15;
 
-  if (!me) return <div className="grid h-screen place-items-center"><Spinner className="h-8 w-8 text-brand-600" /></div>;
+  if (!me) return <div className="grid h-screen place-items-center text-k-label"><Spinner className="h-5 w-5" /></div>;
+
+  const earning = (o: Order) => inr(o.price * 0.8);
 
   return (
     <div className="flex h-screen flex-col">
       <Navbar />
       <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
-        <aside className="scrollbar-thin w-full shrink-0 space-y-4 overflow-y-auto border-r border-slate-200 bg-white p-5 lg:w-[400px]">
-          <Card className={`p-5 ${me.online ? "bg-brand-600 text-white ring-brand-700" : ""}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className={`text-sm ${me.online ? "text-brand-100" : "text-slate-500"}`}>You are</div>
-                <div className="text-2xl font-bold">{me.online ? (job ? "On a delivery" : "Online") : "Offline"}</div>
+        <aside className="w-full shrink-0 overflow-y-auto border-r border-k-line bg-k-side k-scroll lg:w-[380px]">
+          <div className="flex items-center justify-between border-b border-k-line p-4">
+            <div>
+              <div className="k-label">Status</div>
+              <div className="mt-0.5 flex items-center gap-2 text-base font-semibold text-k-hi">
+                <span className={`h-2 w-2 rounded-full ${me.online ? (job ? "bg-k-violet" : "bg-k-ok shadow-[0_0_8px_#2EC27E]") : "bg-k-label"}`} />
+                {me.online ? (job ? "On delivery" : "Online, accepting jobs") : "Offline"}
               </div>
-              <button
-                onClick={toggleOnline}
-                disabled={busy || (me.online && !!job)}
-                className={`relative h-9 w-16 rounded-full transition ${me.online ? "bg-white/30" : "bg-slate-300"} disabled:opacity-50`}
-                aria-label="Toggle online"
-              >
-                <span className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition-all ${me.online ? "left-8" : "left-1"}`} />
-              </button>
             </div>
-            {!me.online && <p className="mt-2 text-sm text-slate-500">Go online to start receiving delivery requests nearby.</p>}
-          </Card>
-
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <Card className="p-3"><div className="text-lg font-semibold">{me.deliveries}</div><div className="text-xs text-slate-500">Deliveries</div></Card>
-            <Card className="p-3"><div className="text-lg font-semibold">{inr(me.earnings)}</div><div className="text-xs text-slate-500">Earned</div></Card>
-            <Card className="p-3"><div className="text-lg font-semibold">★ {me.rating?.toFixed(1) ?? "-"}</div><div className="text-xs text-slate-500">Rating</div></Card>
+            <button onClick={toggleOnline} disabled={busy || (me.online && !!job)} aria-label="Toggle online"
+              className={`relative h-6 w-11 rounded-full transition disabled:opacity-40 ${me.online ? "bg-k-go" : "bg-k-hover"}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${me.online ? "left-[22px]" : "left-0.5"}`} />
+            </button>
           </div>
 
-          {msg && <div className="rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">{msg}</div>}
+          <div className="grid grid-cols-3 divide-x divide-k-line border-b border-k-line">
+            {[["Deliveries", String(me.deliveries)], ["Earned", inr(me.earnings)], ["Rating", me.rating?.toFixed(1) ?? "–"]].map(([k, v]) => (
+              <div key={k} className="px-4 py-3">
+                <div className="k-label">{k}</div>
+                <div className="mt-0.5 font-mono text-lg text-k-hi">{v}</div>
+              </div>
+            ))}
+          </div>
 
-          {job && (
-            <Card className="space-y-3 p-4">
+          {msg && <div className="border-b border-k-line bg-k-accent/[0.07] px-4 py-2.5 text-sm text-k-hi">{msg}</div>}
+
+          {job ? (
+            <div className="space-y-3 border-b border-k-line p-4">
               <div className="flex items-center justify-between">
-                <div className="font-semibold">Order #{job.id}</div>
-                <div className="text-sm font-semibold text-brand-700">{inr(job.price * 0.8)}</div>
+                <span className="k-label">Current job</span>
+                <span className="font-mono text-sm text-k-hi">#{job.id} · {earning(job)}</span>
               </div>
-              <div className="space-y-2 text-sm">
-                <div className={`flex gap-2 ${job.status === "assigned" ? "font-semibold" : "text-slate-400 line-through"}`}><span className="text-emerald-600">●</span>{job.pickup_address}</div>
-                <div className={`flex gap-2 ${job.status === "picked_up" ? "font-semibold" : "text-slate-500"}`}><span className="text-rose-600">●</span>{job.drop_address}</div>
-              </div>
-              {job.package_note && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">📦 {job.package_note}</div>}
+              <ol className="space-y-2">
+                <li className={`flex gap-2.5 text-sm ${job.status === "assigned" ? "text-k-hi" : "text-k-label line-through"}`}>
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-k-accent" />{job.pickup_address}
+                </li>
+                <li className={`flex gap-2.5 text-sm ${job.status === "picked_up" ? "text-k-hi" : "text-k-text"}`}>
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-k-err" />{job.drop_address}
+                </li>
+              </ol>
+              {job.package_note && <div className="rounded bg-k-panel px-3 py-2 text-xs text-k-text">Package: {job.package_note}</div>}
               {distToTarget !== null && (
-                <div className="text-xs text-slate-500">
-                  {arrived ? "You've arrived" : `${distToTarget.toFixed(2)} km to ${job.status === "picked_up" ? "drop-off" : "pickup"}`}
+                <div className="flex items-center gap-1.5 text-xs text-k-label">
+                  <Navigation className="h-3 w-3" />
+                  {arrived ? "Arrived" : `${distToTarget.toFixed(2)} km to ${job.status === "picked_up" ? "drop-off" : "pickup"}`}
                 </div>
               )}
               {mode === "demo" && !arrived && (
                 <Button variant="secondary" className="w-full" onClick={() => setAutoDrive(!autoDrive)}>
-                  {autoDrive ? "⏸ Pause auto-drive" : "▶ Auto-drive (demo)"}
+                  {autoDrive ? <><Pause className="h-3.5 w-3.5" /> Pause auto-drive</> : <><Play className="h-3.5 w-3.5" /> Auto-drive (demo)</>}
                 </Button>
               )}
               {job.status === "assigned" ? (
-                <Button className="w-full py-3" disabled={busy} onClick={pickup}>Confirm pickup</Button>
+                <Button size="lg" className="w-full" disabled={busy} onClick={pickup}><Check className="h-4 w-4" /> Confirm pickup</Button>
               ) : (
                 <>
                   <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={(e) => e.target.files?.[0] && deliver(e.target.files[0])} />
-                  <Button className="w-full py-3" disabled={busy} onClick={() => fileRef.current?.click()}>
-                    {busy ? <Spinner className="h-4 w-4" /> : "📸 Photo & complete delivery"}
+                  <Button size="lg" className="w-full" disabled={busy} onClick={() => fileRef.current?.click()}>
+                    {busy ? <Spinner /> : <><Camera className="h-4 w-4" /> Photo &amp; complete delivery</>}
                   </Button>
-                  <button className="w-full text-xs text-slate-500 hover:text-slate-800" disabled={busy} onClick={() => deliver()}>
-                    Complete without photo
-                  </button>
+                  <button className="w-full text-xs text-k-label hover:text-k-hi" disabled={busy} onClick={() => deliver()}>Complete without photo</button>
                 </>
               )}
-            </Card>
+            </div>
+          ) : (
+            me.online ? <div className="border-b border-k-line px-4 py-6 text-center text-xs text-k-label">Waiting for job offers near you…</div> : null
           )}
 
-          <Card className="p-4 text-sm">
-            <div className="mb-2 font-semibold">Location source</div>
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+          <div className="p-4">
+            <div className="k-label mb-2">Location source</div>
+            <div className="grid grid-cols-2 rounded bg-k-panel p-0.5">
               {(["demo", "gps"] as const).map((m) => (
-                <button key={m} onClick={() => setMode(m)} className={`rounded-lg py-1.5 text-xs font-medium ${mode === m ? "bg-white shadow" : "text-slate-500"}`}>
-                  {m === "demo" ? "Demo (click map)" : "Device GPS"}
+                <button key={m} onClick={() => setMode(m)}
+                  className={`flex items-center justify-center gap-1.5 rounded-[2px] py-1.5 text-xs font-semibold ${mode === m ? "bg-k-hover text-k-hi" : "text-k-label hover:text-k-text"}`}>
+                  {m === "demo" ? "Demo (click map)" : <><Crosshair className="h-3 w-3" /> Device GPS</>}
                 </button>
               ))}
             </div>
-            {mode === "demo" && <p className="mt-2 text-xs text-slate-500">Click anywhere on the map to move yourself.</p>}
-          </Card>
+            {mode === "demo" && <p className="mt-2 text-xs text-k-label">Click anywhere on the map to move.</p>}
+          </div>
         </aside>
 
         <main className="relative h-[45vh] lg:h-auto lg:flex-1">
@@ -300,35 +307,38 @@ function RiderApp() {
             onMapClick={mode === "demo" ? (lat, lng) => setPos([lat, lng]) : undefined}
             fitTo={job ? [pos, [job.pickup_lat, job.pickup_lng], [job.drop_lat, job.drop_lng]] : [pos]}
             fitKey={job ? `job${job.id}${job.status}` : "idle"}
-            lines={target ? [{ id: "nav", points: [pos, target], color: "#6366f1" }] : []}
+            lines={target ? [{ id: "nav", points: [pos, target], color: "#A08CF5" }] : []}
           />
         </main>
       </div>
 
       {offer && (
-        <div className="fixed inset-0 z-[3000] grid place-items-end bg-black/40 p-4 sm:place-items-center">
-          <div className="w-full max-w-md animate-[fadeIn_.2s_ease-out] overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="h-1.5 bg-slate-100">
-              <div className="h-full bg-amber-500 transition-all duration-300" style={{ width: `${(secondsLeft / (offer.expires_in || 20)) * 100}%` }} />
+        <div className="fixed inset-0 z-[3000] grid place-items-end bg-black/50 p-4 sm:place-items-center">
+          <div className="w-full max-w-md animate-fadeIn overflow-hidden rounded-md border border-k-line bg-k-side shadow-2xl">
+            <div className="h-1 bg-k-panel">
+              <div className="h-full bg-k-warn transition-all duration-300" style={{ width: `${(secondsLeft / (offer.expires_in || 20)) * 100}%` }} />
             </div>
-            <div className="space-y-4 p-6">
+            <div className="space-y-4 p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-amber-600">New delivery request</div>
-                  <div className="mt-1 text-3xl font-bold">{inr(offer.order.price * 0.8)}</div>
-                  <div className="text-sm text-slate-500">
+                  <div className="k-label text-k-warn">New delivery request</div>
+                  <div className="mt-1 font-mono text-3xl text-k-hi">{earning(offer.order)}</div>
+                  <div className="text-xs text-k-label">
                     {offer.order.distance_km} km trip{offer.distance_to_pickup_km !== undefined ? ` · ${offer.distance_to_pickup_km} km to pickup` : ""}
                   </div>
                 </div>
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-amber-50 text-xl font-bold tabular-nums text-amber-700 ring-4 ring-amber-100">{secondsLeft}</div>
+                <div className="text-right">
+                  <div className="font-mono text-3xl tabular-nums text-k-warn">{secondsLeft}s</div>
+                  <div className="k-label">to respond</div>
+                </div>
               </div>
-              <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-sm">
-                <div className="flex gap-2"><span className="text-emerald-600">●</span>{offer.order.pickup_address}</div>
-                <div className="flex gap-2"><span className="text-rose-600">●</span>{offer.order.drop_address}</div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="secondary" disabled={busy} onClick={reject} className="py-3">Decline</Button>
-                <Button disabled={busy} onClick={accept} className="py-3">Accept</Button>
+              <ol className="space-y-2 rounded border border-k-line bg-k-canvas p-3 text-sm">
+                <li className="flex gap-2.5 text-k-hi"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-k-accent" />{offer.order.pickup_address}</li>
+                <li className="flex gap-2.5 text-k-hi"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-k-err" />{offer.order.drop_address}</li>
+              </ol>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="secondary" size="lg" disabled={busy} onClick={reject}>Decline</Button>
+                <Button size="lg" disabled={busy} onClick={accept}>Accept</Button>
               </div>
             </div>
           </div>

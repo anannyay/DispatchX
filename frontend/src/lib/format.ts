@@ -17,21 +17,12 @@ export function timeAgo(s: string) {
 export const clock = (s: string) => parseUtc(s).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: "Finding rider",
-  assigned: "Rider on the way",
+  pending: "Matching",
+  assigned: "En route to pickup",
   picked_up: "In transit",
   delivered: "Delivered",
   cancelled: "Cancelled",
-  unassigned: "Needs attention",
-};
-
-export const STATUS_STYLE: Record<OrderStatus, string> = {
-  pending: "bg-amber-50 text-amber-700 ring-amber-200",
-  assigned: "bg-sky-50 text-sky-700 ring-sky-200",
-  picked_up: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-  delivered: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  cancelled: "bg-slate-100 text-slate-600 ring-slate-200",
-  unassigned: "bg-rose-50 text-rose-700 ring-rose-200",
+  unassigned: "Unassigned",
 };
 
 export function haversineKm(a: [number, number], b: [number, number]) {

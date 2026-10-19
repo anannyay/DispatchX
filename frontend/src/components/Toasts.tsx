@@ -1,5 +1,6 @@
 "use client";
 
+import { Bell } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useSocketEvent } from "@/lib/socket";
 import type { Notification } from "@/lib/types";
@@ -8,7 +9,7 @@ interface Toast extends Notification {
   key: number;
 }
 
-/** Pops up customer notifications pushed by the notify worker over Socket.IO. */
+/** Customer notifications pushed by the notify worker over Socket.IO. */
 export default function Toasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const onNote = useCallback((n: Notification) => {
@@ -21,11 +22,12 @@ export default function Toasts() {
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-[2000] flex w-80 flex-col gap-2">
       {toasts.map((t) => (
-        <div key={t.key} className="pointer-events-auto animate-[fadeIn_.2s_ease-out] rounded-xl bg-ink-900 p-4 text-white shadow-xl ring-1 ring-white/10">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <span className="text-brand-400">●</span> {t.title}
+        <div key={t.key} className="pointer-events-auto flex animate-fadeIn gap-3 rounded border border-k-line bg-k-side p-3 shadow-2xl">
+          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-k-accent" />
+          <div>
+            <div className="text-sm font-semibold text-k-hi">{t.title}</div>
+            <div className="text-xs text-k-text">{t.body}</div>
           </div>
-          <div className="mt-0.5 text-sm text-slate-300">{t.body}</div>
         </div>
       ))}
     </div>

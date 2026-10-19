@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ArrowLeft, Bike, ChevronDown, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import Navbar from "@/components/Navbar";
 import RequireRole from "@/components/RequireRole";
 import Timeline from "@/components/Timeline";
 import Toasts from "@/components/Toasts";
-import { Button, Card, Spinner, StatusBadge } from "@/components/ui";
+import { Button, KV, Spinner, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 import { clock, haversineKm, inr } from "@/lib/format";
 import { getSocket, useSocketEvent } from "@/lib/socket";
@@ -30,24 +31,17 @@ function Tracking() {
 
   useEffect(() => {
     api<Order>(`/orders/${orderId}`)
-      .then((o) => {
-        setOrder(o);
-        if (o.rider_location) setRider(o.rider_location);
-      })
+      .then((o) => { setOrder(o); if (o.rider_location) setRider(o.rider_location); })
       .catch((e) => setError(e.message));
     loadEvents();
   }, [orderId, loadEvents]);
 
-  // Join the order's room, and re-join after any reconnect
   useEffect(() => {
     const s = getSocket();
     const join = () => s.emit("order:subscribe", { order_id: orderId });
     join();
     s.on("connect", join);
-    return () => {
-      s.off("connect", join);
-      s.emit("order:unsubscribe", { order_id: orderId });
-    };
+    return () => { s.off("connect", join); s.emit("order:unsubscribe", { order_id: orderId }); };
   }, [orderId]);
 
   useSocketEvent<Order>("order:update", useCallback((o: Order) => {
@@ -77,11 +71,10 @@ function Tracking() {
       { id: "p", kind: "pickup", lat: order.pickup_lat, lng: order.pickup_lng, label: order.pickup_address },
       { id: "d", kind: "drop", lat: order.drop_lat, lng: order.drop_lng, label: order.drop_address },
     ];
-    if (rider && live) m.push({ id: "r", kind: "rider-busy", lat: rider.lat, lng: rider.lng, heading: rider.heading, label: order.rider_name ?? "Rider", highlight: true });
+    if (rider && live) m.push({ id: "r", kind: "rider-busy", lat: rider.lat, lng: rider.lng, heading: rider.heading, label: order.rider_name ?? "Rider" });
     return m;
   }, [order, rider, live]);
 
-  // Re-frame when the order changes phase, including the rider once one is assigned
   const hasRider = !!rider && !!live;
   const fitPts = useMemo<[number, number][]>(() => {
     if (!order) return [];
@@ -92,82 +85,84 @@ function Tracking() {
 
   async function cancel() {
     if (!order || !confirm("Cancel this order?")) return;
-    try {
-      setOrder(await api<Order>(`/orders/${order.id}/cancel`, { method: "POST" }));
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Could not cancel");
-    }
+    try { setOrder(await api<Order>(`/orders/${order.id}/cancel`, { method: "POST" })); }
+    catch (e) { alert(e instanceof Error ? e.message : "Could not cancel"); }
   }
 
-  if (error) return <div className="p-10 text-center text-rose-600">{error}</div>;
-  if (!order) return <div className="grid h-screen place-items-center"><Spinner className="h-8 w-8 text-brand-600" /></div>;
+  if (error) return <div className="p-10 text-center text-k-err">{error}</div>;
+  if (!order) return <div className="grid h-screen place-items-center text-k-label"><Spinner className="h-5 w-5" /></div>;
 
   return (
     <div className="flex h-screen flex-col">
       <Navbar />
       <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
-        <aside className="scrollbar-thin w-full shrink-0 space-y-4 overflow-y-auto border-r border-slate-200 bg-white p-5 lg:w-[400px]">
-          <Link href="/customer" className="text-sm text-slate-500 hover:text-slate-900">← All orders</Link>
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold">Order #{order.id}</h1>
-            <StatusBadge status={order.status} />
+        <aside className="w-full shrink-0 overflow-y-auto border-r border-k-line bg-k-side k-scroll lg:w-[380px]">
+          <div className="border-b border-k-line p-4">
+            <Link href="/customer" className="inline-flex items-center gap-1 text-xs text-k-label hover:text-k-hi"><ArrowLeft className="h-3 w-3" /> Orders</Link>
+            <div className="mt-2 flex items-center justify-between">
+              <h1 className="font-mono text-lg font-medium text-k-hi">#{order.id}</h1>
+              <StatusBadge status={order.status} />
+            </div>
           </div>
 
           {order.status === "pending" && (
-            <Card className="flex items-center gap-3 bg-amber-50 p-4 ring-amber-200">
-              <span className="relative flex h-10 w-10 items-center justify-center">
-                <span className="absolute h-full w-full animate-ping rounded-full bg-amber-300 opacity-60" />
-                <span className="relative text-xl">🔍</span>
-              </span>
-              <div className="text-sm"><div className="font-semibold text-amber-900">Finding the nearest rider</div><div className="text-amber-700">Usually takes a few seconds</div></div>
-            </Card>
+            <div className="flex items-center gap-3 border-b border-k-line bg-k-warn/[0.06] px-4 py-3">
+              <Search className="h-4 w-4 animate-pulse text-k-warn" />
+              <div className="text-sm"><div className="font-medium text-k-hi">Matching the nearest rider</div><div className="text-xs text-k-label">Offers go out to riders within a few kilometres</div></div>
+            </div>
           )}
           {order.status === "unassigned" && (
-            <Card className="bg-rose-50 p-4 text-sm text-rose-800 ring-rose-200">All riders nearby are busy. Our dispatch team has been alerted and will assign one shortly.</Card>
+            <div className="border-b border-k-line bg-k-err/[0.08] px-4 py-3 text-sm text-k-hi">All nearby riders are busy. The dispatch desk has been alerted.</div>
           )}
 
           {order.rider_name && (
-            <Card className="flex items-center gap-3 p-4">
-              <div className="grid h-11 w-11 place-items-center rounded-full bg-brand-100 text-xl">🛵</div>
+            <div className="flex items-center gap-3 border-b border-k-line px-4 py-3">
+              <div className="grid h-9 w-9 place-items-center rounded bg-k-panel"><Bike className="h-4 w-4 text-k-violet" strokeWidth={1.5} /></div>
               <div className="flex-1">
-                <div className="font-semibold">{order.rider_name}</div>
-                <div className="text-xs text-slate-500">{order.status === "picked_up" ? "Heading to drop-off" : order.status === "assigned" ? "Heading to pickup" : "Your rider"}</div>
+                <div className="text-sm font-medium text-k-hi">{order.rider_name}</div>
+                <div className="text-xs text-k-label">{order.status === "picked_up" ? "Heading to drop-off" : order.status === "assigned" ? "Heading to pickup" : "Rider"}</div>
               </div>
-              {liveEta !== null && <div className="text-right"><div className="text-2xl font-bold text-brand-700">{liveEta}</div><div className="text-xs text-slate-500">min away</div></div>}
-            </Card>
+              {liveEta !== null && (
+                <div className="text-right">
+                  <div className="font-mono text-2xl text-k-hi">{liveEta}<span className="ml-0.5 text-xs text-k-label">min</span></div>
+                  <div className="k-label">ETA</div>
+                </div>
+              )}
+            </div>
           )}
 
-          <Card className="p-4"><Timeline order={order} /></Card>
+          <div className="border-b border-k-line p-4"><Timeline order={order} /></div>
 
-          <Card className="space-y-2 p-4 text-sm">
-            <div className="flex gap-2"><span className="text-emerald-600">●</span><span className="text-slate-700">{order.pickup_address}</span></div>
-            <div className="flex gap-2"><span className="text-rose-600">●</span><span className="text-slate-700">{order.drop_address}</span></div>
-            <div className="flex justify-between border-t border-slate-100 pt-2 text-slate-600">
-              <span>{order.distance_km} km{order.package_note ? ` · ${order.package_note}` : ""}</span>
-              <span className="font-semibold text-slate-900">{inr(order.price)}</span>
-            </div>
-          </Card>
+          <dl className="divide-y divide-k-line/60 border-b border-k-line px-4 py-2">
+            <KV k="Pickup" v={order.pickup_address} />
+            <KV k="Drop" v={order.drop_address} />
+            <KV k="Distance" v={`${order.distance_km} km`} mono />
+            <KV k="Fare" v={inr(order.price)} mono />
+            {order.package_note && <KV k="Package" v={order.package_note} />}
+          </dl>
 
           {pod && (
-            <Card className="p-4">
-              <div className="mb-2 text-sm font-semibold">Proof of delivery</div>
+            <div className="border-b border-k-line p-4">
+              <div className="k-label mb-2">Proof of delivery</div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={pod} alt="Proof of delivery" className="max-h-60 w-full rounded-lg object-cover" />
-            </Card>
+              <img src={pod} alt="Proof of delivery" className="max-h-56 w-full rounded object-cover" />
+            </div>
           )}
 
-          {(order.status === "pending" || order.status === "assigned" || order.status === "unassigned") && (
-            <Button variant="secondary" onClick={cancel} className="w-full">Cancel order</Button>
-          )}
-
-          <div>
-            <button onClick={() => setShowLog(!showLog)} className="text-xs font-medium text-slate-500 hover:text-slate-800">
-              {showLog ? "Hide" : "Show"} system event log ({events.length})
+          <div className="space-y-3 p-4">
+            {(order.status === "pending" || order.status === "assigned" || order.status === "unassigned") && (
+              <Button variant="secondary" onClick={cancel} className="w-full">Cancel order</Button>
+            )}
+            <button onClick={() => setShowLog(!showLog)} className="flex items-center gap-1 text-xs text-k-label hover:text-k-hi">
+              <ChevronDown className={`h-3 w-3 transition ${showLog ? "rotate-180" : ""}`} /> Event log ({events.length})
             </button>
             {showLog && (
-              <ul className="mt-2 space-y-1 rounded-lg bg-slate-900 p-3 font-mono text-[11px] text-slate-300">
+              <ul className="space-y-0.5 rounded border border-k-line bg-k-canvas p-2 font-mono text-2xs leading-5">
                 {events.map((e) => (
-                  <li key={e.id}><span className="text-slate-500">{clock(e.created_at)}</span> <span className="text-emerald-400">{e.type}</span> {e.data && Object.keys(e.data).length > 0 && <span className="text-slate-500">{JSON.stringify(e.data)}</span>}</li>
+                  <li key={e.id} className="truncate">
+                    <span className="text-k-label">{clock(e.created_at)}</span> <span className="text-k-accent">{e.type}</span>{" "}
+                    {e.data && Object.keys(e.data).length > 0 && <span className="text-k-label">{JSON.stringify(e.data)}</span>}
+                  </li>
                 ))}
               </ul>
             )}
@@ -176,8 +171,8 @@ function Tracking() {
         <main className="relative h-[45vh] lg:h-auto lg:flex-1">
           <MapView center={[order.pickup_lat, order.pickup_lng]} markers={markers} fitTo={fitPts} fitKey={`${order.id}-${order.status}-${hasRider}`}
             lines={[
-              { id: "trip", points: [[order.pickup_lat, order.pickup_lng], [order.drop_lat, order.drop_lng]], color: "#94a3b8", dashed: true },
-              ...(rider && live && target ? [{ id: "live", points: [[rider.lat, rider.lng], target] as [number, number][], color: "#6366f1" }] : []),
+              { id: "trip", points: [[order.pickup_lat, order.pickup_lng], [order.drop_lat, order.drop_lng]], dashed: true, color: "#6A7485" },
+              ...(rider && live && target ? [{ id: "live", points: [[rider.lat, rider.lng], target] as [number, number][], color: "#A08CF5" }] : []),
             ]} />
         </main>
       </div>

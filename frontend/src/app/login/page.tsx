@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Logo } from "@/components/Navbar";
+import { Bike, Package, Radar } from "lucide-react";
+import { Wordmark } from "@/components/Navbar";
 import { Button, Input, Spinner } from "@/components/ui";
 import { homeFor, useAuth } from "@/lib/auth";
 
 const DEMOS = [
-  { label: "Customer", email: "customer@dispatchx.dev" },
-  { label: "Rider", email: "rider@dispatchx.dev" },
-  { label: "Dispatcher", email: "dispatch@dispatchx.dev" },
+  { label: "Customer", email: "customer@dispatchx.dev", icon: Package },
+  { label: "Rider", email: "rider@dispatchx.dev", icon: Bike },
+  { label: "Dispatcher", email: "dispatch@dispatchx.dev", icon: Radar },
 ];
 
 export default function LoginPage() {
@@ -29,36 +30,40 @@ export default function LoginPage() {
       const u = await login(creds?.email ?? email, creds?.password ?? password);
       router.push(homeFor(u.role));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Sign in failed");
       setBusy(false);
     }
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex justify-center"><Logo /></div>
-        <form onSubmit={submit} className="space-y-4 rounded-2xl bg-white p-6 shadow-card ring-1 ring-slate-200">
-          <h1 className="text-xl font-semibold">Welcome back</h1>
+    <div className="grid min-h-screen place-items-center bg-k-canvas px-4">
+      <div className="w-full max-w-[360px]">
+        <div className="mb-6"><Wordmark /></div>
+        <form onSubmit={submit} className="k-panel space-y-4 p-5">
+          <div>
+            <h1 className="text-base font-semibold text-k-hi">Sign in</h1>
+            <p className="text-xs text-k-label">Use your account or a demo role below.</p>
+          </div>
           <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
           <Input label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-          {error && <p className="text-sm text-rose-600">{error}</p>}
-          <Button type="submit" disabled={busy} className="w-full">{busy ? <Spinner className="h-4 w-4" /> : "Log in"}</Button>
-          <p className="text-center text-sm text-slate-500">
-            New here? <Link href="/register" className="font-medium text-brand-600 hover:underline">Create an account</Link>
+          {error && <p className="text-xs text-k-err">{error}</p>}
+          <Button type="submit" disabled={busy} className="w-full">{busy ? <Spinner /> : "Sign in"}</Button>
+          <p className="text-center text-xs text-k-label">
+            No account? <Link href="/register" className="text-k-accent hover:underline">Create one</Link>
           </p>
         </form>
-        <div className="mt-6">
-          <div className="mb-2 text-center text-xs font-medium uppercase tracking-wider text-slate-400">Quick demo login</div>
+        <div className="mt-4">
+          <div className="k-label mb-2">Demo roles</div>
           <div className="grid grid-cols-3 gap-2">
-            {DEMOS.map((d) => (
+            {DEMOS.map(({ label, email: demo, icon: Icon }) => (
               <button
-                key={d.email}
+                key={demo}
                 disabled={busy}
-                onClick={() => submit(undefined, { email: d.email, password: "dispatchx123" })}
-                className="rounded-xl bg-white px-2 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                onClick={() => submit(undefined, { email: demo, password: "dispatchx123" })}
+                className="flex flex-col items-center gap-1.5 rounded border border-k-line bg-k-side py-3 text-xs font-medium text-k-text transition hover:border-k-accent hover:text-k-hi"
               >
-                {d.label}
+                <Icon className="h-4 w-4" strokeWidth={1.5} />
+                {label}
               </button>
             ))}
           </div>

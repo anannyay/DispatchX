@@ -1,56 +1,66 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSocket } from "@/lib/socket";
 
-export function Logo({ dark = false }: { dark?: boolean }) {
+export function Wordmark() {
   return (
     <Link href="/" className="flex items-center gap-2">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-lg">⚡</span>
-      <span className={`text-lg font-bold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>
-        Dispatch<span className="text-brand-500">X</span>
-      </span>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+        <rect x="1" y="1" width="18" height="18" rx="3" fill="none" stroke="#1FBAD6" strokeWidth="1.5" />
+        <path d="M5 13.5 9 9l2.5 2.5L15 6.5" fill="none" stroke="#1FBAD6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="15" cy="6.5" r="1.6" fill="#1FBAD6" />
+      </svg>
+      <span className="text-sm font-semibold tracking-tight text-k-hi">DispatchX</span>
     </Link>
   );
 }
 
 export function LiveDot({ connected }: { connected: boolean }) {
   return (
-    <span className="flex items-center gap-1.5 text-xs font-medium" title={connected ? "Real-time connected" : "Reconnecting"}>
-      <span className="relative flex h-2.5 w-2.5">
-        {connected && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
-        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
-      </span>
-      <span className={connected ? "text-emerald-600" : "text-slate-500"}>{connected ? "Live" : "Offline"}</span>
+    <span className="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-[0.08em]" title={connected ? "Real-time connected" : "Reconnecting"}>
+      <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-k-ok shadow-[0_0_6px_#2EC27E]" : "bg-k-label"}`} />
+      <span className={connected ? "text-k-text" : "text-k-label"}>{connected ? "Live" : "Offline"}</span>
     </span>
   );
 }
 
-export default function Navbar({ dark = false, children }: { dark?: boolean; children?: React.ReactNode }) {
+export interface NavItem { href: string; label: string; external?: boolean }
+
+export default function Navbar({ items = [] }: { items?: NavItem[] }) {
   const { user, logout } = useAuth();
   const { connected } = useSocket();
+  const path = usePathname();
   return (
-    <header className={`sticky top-0 z-[1000] border-b ${dark ? "border-white/10 bg-ink-900" : "border-slate-200 bg-white/90 backdrop-blur"}`}>
-      <div className="flex h-14 items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex items-center gap-6">
-          <Logo dark={dark} />
-          {children}
-        </div>
-        <div className="flex items-center gap-4">
-          <LiveDot connected={connected} />
-          {user && (
-            <div className="flex items-center gap-3">
-              <div className="hidden text-right sm:block">
-                <div className={`text-sm font-medium ${dark ? "text-white" : "text-slate-900"}`}>{user.name}</div>
-                <div className="text-xs capitalize text-slate-500">{user.role}</div>
-              </div>
-              <button onClick={logout} className={`rounded-lg px-2.5 py-1.5 text-sm ${dark ? "text-slate-300 hover:bg-white/10" : "text-slate-600 hover:bg-slate-100"}`}>
-                Log out
-              </button>
-            </div>
+    <header className="sticky top-0 z-[1000] flex h-12 shrink-0 items-center justify-between border-b border-k-line bg-k-side px-4">
+      <div className="flex h-full items-center gap-6">
+        <Wordmark />
+        <nav className="hidden h-full items-center md:flex">
+          {items.map((i) =>
+            i.external ? (
+              <a key={i.href} href={i.href} target="_blank" rel="noreferrer" className="k-tab">{i.label}</a>
+            ) : (
+              <Link key={i.href} href={i.href} className={`k-tab ${path === i.href ? "k-tab-active" : ""}`}>{i.label}</Link>
+            ),
           )}
-        </div>
+        </nav>
+      </div>
+      <div className="flex items-center gap-5">
+        <LiveDot connected={connected} />
+        {user && (
+          <div className="flex items-center gap-3 border-l border-k-line pl-4">
+            <div className="hidden text-right leading-tight sm:block">
+              <div className="text-sm font-medium text-k-hi">{user.name}</div>
+              <div className="text-2xs uppercase tracking-[0.08em] text-k-label">{user.role}</div>
+            </div>
+            <button onClick={logout} title="Log out" className="rounded p-1.5 text-k-label hover:bg-k-panel hover:text-k-hi">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

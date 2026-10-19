@@ -18,11 +18,7 @@ export default function RequireRole({ roles, children }: { roles: Role[]; childr
   }, [ready, user, roles, router]);
 
   if (!ready || !allowed) {
-    return (
-      <div className="grid h-screen place-items-center text-brand-600">
-        <Spinner className="h-8 w-8" />
-      </div>
-    );
+    return <div className="grid h-screen place-items-center text-k-label"><Spinner className="h-5 w-5" /></div>;
   }
   return <>{children}</>;
 }

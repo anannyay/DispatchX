@@ -1,28 +1,25 @@
 "use client";
 
-import Link from "next/link";
+import { Pause, Play, Server, Skull, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import RequireRole from "@/components/RequireRole";
+import { Button, KV, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
+import { DISPATCH_NAV } from "@/lib/nav";
 import type { InfraNode, InfraSnapshot, InfraTask } from "@/lib/types";
 
+// Categorical palette in the kepler.gl family
 const SERVICE_COLORS: Record<string, string> = {
-  api: "#818cf8",
-  web: "#34d399",
-  worker: "#fbbf24",
-  beat: "#94a3b8",
-  consumer: "#22d3ee",
-  monitoring: "#f472b6",
-  mysql: "#fb923c",
-  redis: "#f87171",
+  api: "#1FBAD6", web: "#2EC27E", worker: "#F0B429", beat: "#8A94A6", consumer: "#A08CF5",
+  monitoring: "#E8798F", mysql: "#F2994A", redis: "#F25F5C", seed: "#6A7485",
 };
-const colorFor = (s: string) => SERVICE_COLORS[s] ?? "#a78bfa";
+const colorFor = (s: string) => SERVICE_COLORS[s] ?? "#9AA5B1";
 
-const PLATFORM_LABEL = {
-  ecs: { name: "Amazon ECS on EC2", node: "EC2 instance", task: "task", icon: "🟧" },
-  kubernetes: { name: "Kubernetes", node: "node", task: "pod", icon: "☸️" },
-  none: { name: "Local", node: "host", task: "container", icon: "🐳" },
+const PLATFORM = {
+  ecs: { name: "Amazon ECS on EC2", node: "Container instance", nodes: "Instances", unit: "Task", units: "Tasks" },
+  kubernetes: { name: "Kubernetes", node: "Node", nodes: "Nodes", unit: "Pod", units: "Pods" },
+  none: { name: "Docker Compose", node: "Host", nodes: "Hosts", unit: "Container", units: "Containers" },
 } as const;
 
 function age(iso: string | null) {
@@ -30,89 +27,84 @@ function age(iso: string | null) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return `${Math.floor(s)}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m`;
-  return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-function Bar({ label, used, total, unit }: { label: string; used: number; total: number; unit: string }) {
+const dying = (t: InfraTask) => ["STOPPED", "STOPPING", "DEACTIVATING"].includes(t.status) || t.desired === "STOPPED";
+
+function Gauge({ label, used, total, unit }: { label: string; used: number; total: number; unit: string }) {
   const pct = total ? Math.min(100, Math.round((used / total) * 100)) : 0;
-  const color = pct > 85 ? "bg-rose-500" : pct > 65 ? "bg-amber-400" : "bg-emerald-500";
+  const color = pct > 85 ? "#F25F5C" : pct > 65 ? "#F0B429" : "#1FBAD6";
   return (
     <div>
-      <div className="flex justify-between text-[11px] text-slate-400">
-        <span>{label}</span>
-        <span className="tabular-nums">{used}/{total} {unit} · {pct}%</span>
+      <div className="flex items-baseline justify-between">
+        <span className="k-label">{label}</span>
+        <span className="font-mono text-2xs text-k-text">{used.toLocaleString()} / {total.toLocaleString()} {unit} · {pct}%</span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+      <div className="mt-1 h-1 bg-k-panel">
+        <div className="h-full transition-all duration-700" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
 }
 
-function TaskChip({ t, onClick, selected }: { t: InfraTask; onClick: () => void; selected: boolean }) {
-  const dying = t.status === "STOPPED" || t.status === "STOPPING" || t.status === "DEACTIVATING" || t.desired === "STOPPED";
-  const starting = !dying && t.status !== "RUNNING";
-  const fresh = !dying && t.started_at && Date.now() - new Date(t.started_at).getTime() < 60_000;
-  const c = colorFor(t.service);
+function TaskRow({ t, selected, onClick }: { t: InfraTask; selected: boolean; onClick: () => void }) {
+  const d = dying(t);
+  const starting = !d && t.status !== "RUNNING";
+  const fresh = !d && t.started_at && Date.now() - new Date(t.started_at).getTime() < 60_000;
   return (
-    <button
-      onClick={onClick}
-      title={`${t.service} · ${t.status} · ${t.id}`}
-      className={`group relative flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ring-1 transition-all duration-500
-        ${dying ? "bg-rose-950/60 opacity-60 ring-rose-500/60" : "bg-white/[0.04] ring-white/10 hover:bg-white/[0.08]"}
-        ${selected ? "ring-2 ring-white" : ""} ${fresh ? "animate-[fadeIn_.4s_ease-out]" : ""}`}
-      style={{ borderLeft: `3px solid ${dying ? "#f43f5e" : c}` }}
-    >
-      {fresh && <span className="absolute -right-1 -top-1 rounded bg-emerald-500 px-1 text-[9px] font-bold text-white">NEW</span>}
-      <span className={`h-2 w-2 shrink-0 rounded-full ${dying ? "bg-rose-500" : starting ? "animate-pulse bg-amber-400" : "bg-emerald-400"}`} />
-      <span className="min-w-0">
-        <span className="block font-semibold text-slate-100">{t.service}</span>
-        <span className="block font-mono text-[10px] text-slate-500">
-          {t.id.slice(0, 8)} · {dying ? t.status.toLowerCase() : starting ? t.status.toLowerCase() : age(t.started_at)}
-        </span>
+    <button onClick={onClick}
+      className={`grid w-full grid-cols-[10px_1fr_auto_auto] items-center gap-2.5 border-b border-k-line/50 px-3 py-1.5 text-left text-xs transition-colors last:border-0
+        ${selected ? "bg-k-hover" : "hover:bg-k-panel"} ${d ? "opacity-50" : ""} ${fresh ? "animate-fadeIn" : ""}`}>
+      <span className="h-2 w-2 rounded-[1px]" style={{ background: d ? "#F25F5C" : colorFor(t.service) }} />
+      <span className="truncate">
+        <span className="font-medium text-k-hi">{t.service}</span>
+        <span className="ml-2 font-mono text-2xs text-k-label">{t.id.slice(0, 8)}</span>
       </span>
+      {fresh ? <span className="font-mono text-2xs font-semibold text-k-ok">NEW</span> :
+        <span className={`font-mono text-2xs ${d ? "text-k-err" : starting ? "text-k-warn" : "text-k-label"}`}>
+          {d ? "stopping" : starting ? t.status.toLowerCase() : age(t.started_at)}
+        </span>}
+      <span className={`h-1.5 w-1.5 rounded-full ${d ? "bg-k-err" : starting ? "animate-pulse bg-k-warn" : "bg-k-ok"}`} />
     </button>
   );
 }
 
-function NodeCard({ n, kind, selected, onSelect }: {
-  n: InfraNode; kind: InfraSnapshot["platform"]; selected: string | null; onSelect: (t: InfraTask) => void;
-}) {
-  const unitCpu = kind === "kubernetes" ? "m" : "units";
+function NodePanel({ n, kind, selected, onSelect }: { n: InfraNode; kind: InfraSnapshot["platform"]; selected: string | null; onSelect: (t: InfraTask) => void }) {
   const fresh = n.started_at && Date.now() - new Date(n.started_at).getTime() < 180_000;
+  const running = n.tasks.filter((t) => t.status === "RUNNING").length;
   return (
-    <div className={`rounded-2xl bg-ink-800 p-4 ring-1 transition-all duration-700 ${fresh ? "ring-emerald-500/60 shadow-[0_0_30px_-8px_rgba(16,185,129,.6)]" : "ring-white/10"}`}>
-      <div className="flex items-start justify-between gap-2">
+    <section className={`k-panel flex flex-col transition-colors duration-700 ${fresh ? "border-k-ok/70" : ""}`}>
+      <header className="flex items-start justify-between gap-3 border-b border-k-line px-3 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-lg">{kind === "kubernetes" ? "☸️" : "🖥️"}</span>
-            <span className="truncate font-mono text-sm font-semibold text-white">{n.name ?? n.id.slice(0, 12)}</span>
-            {fresh && <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">SCALED OUT</span>}
+            <Server className="h-3.5 w-3.5 shrink-0 text-k-label" strokeWidth={1.5} />
+            <span className="truncate font-mono text-sm text-k-hi">{n.name ?? n.id.slice(0, 12)}</span>
+            {fresh && <span className="rounded-[2px] bg-k-ok/15 px-1 font-mono text-2xs font-semibold text-k-ok">SCALED OUT</span>}
           </div>
-          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
-            {n.zone && <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-300">{n.zone}</span>}
-            {n.instance_type && <span className="rounded bg-white/10 px-1.5 py-0.5 text-slate-300">{n.instance_type}</span>}
-            <span className={`rounded px-1.5 py-0.5 ${n.status === "ACTIVE" ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>{n.status.toLowerCase()}</span>
-            <span className="text-slate-500">up {age(n.started_at)}</span>
+          <div className="mt-1 flex flex-wrap gap-x-3 font-mono text-2xs text-k-label">
+            {n.zone && <span>{n.zone}</span>}
+            {n.instance_type && <span>{n.instance_type}</span>}
+            <span className={n.status === "ACTIVE" ? "text-k-ok" : "text-k-err"}>{n.status.toLowerCase()}</span>
+            <span>up {age(n.started_at)}</span>
           </div>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold tabular-nums text-white">{n.tasks.filter((t) => t.status === "RUNNING").length}</div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">{kind === "kubernetes" ? "pods" : "tasks"}</div>
+          <div className="font-mono text-xl text-k-hi">{running}</div>
+          <div className="k-label">{PLATFORM[kind].units}</div>
         </div>
+      </header>
+      <div className="space-y-2 px-3 py-2.5">
+        <Gauge label="CPU reserved" used={n.cpu_used} total={n.cpu_total} unit={kind === "kubernetes" ? "m" : "units"} />
+        <Gauge label="Memory reserved" used={n.mem_used} total={n.mem_total} unit="MiB" />
       </div>
-      <div className="mt-3 space-y-2">
-        <Bar label="CPU reserved" used={n.cpu_used} total={n.cpu_total} unit={unitCpu} />
-        <Bar label="Memory reserved" used={n.mem_used} total={n.mem_total} unit="MiB" />
+      <div className="border-t border-k-line">
+        {n.tasks.slice().sort((a, b) => a.service.localeCompare(b.service)).map((t) => (
+          <TaskRow key={t.id} t={t} selected={selected === t.id} onClick={() => onSelect(t)} />
+        ))}
+        {n.tasks.length === 0 && <div className="px-3 py-3 text-center text-xs text-k-label">No workloads scheduled</div>}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {n.tasks
-          .slice()
-          .sort((a, b) => a.service.localeCompare(b.service))
-          .map((t) => <TaskChip key={t.id} t={t} selected={selected === t.id} onClick={() => onSelect(t)} />)}
-        {n.tasks.length === 0 && <div className="col-span-full rounded-lg border border-dashed border-white/10 p-3 text-center text-xs text-slate-500">No containers yet</div>}
-      </div>
-    </div>
+    </section>
   );
 }
 
@@ -123,11 +115,7 @@ function ClusterView() {
   const [paused, setPaused] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      setSnap(await api<InfraSnapshot>("/admin/infra"));
-    } catch {
-      /* keep last snapshot */
-    }
+    try { setSnap(await api<InfraSnapshot>("/admin/infra")); } catch { /* keep last snapshot */ }
   }, []);
 
   useEffect(() => {
@@ -137,14 +125,18 @@ function ClusterView() {
     return () => clearInterval(t);
   }, [load, paused]);
 
-  // keep the detail panel in sync with the latest snapshot
   const current = selected && snap ? snap.nodes.flatMap((n) => n.tasks).find((t) => t.id === selected.id) ?? selected : null;
+  const kind = snap?.platform ?? "none";
+  const P = PLATFORM[kind];
+  const all = snap?.nodes.flatMap((n) => n.tasks) ?? [];
+  const running = all.filter((t) => t.status === "RUNNING").length;
+  const services = [...new Set(all.map((t) => t.service))].sort();
 
   async function kill(t: InfraTask) {
-    if (!confirm(`Chaos test: stop ${t.service} ${snap?.platform === "kubernetes" ? "pod" : "task"} ${t.id.slice(0, 8)}?\nThe orchestrator should replace it automatically.`)) return;
+    if (!confirm(`Stop ${t.service} ${P.unit.toLowerCase()} ${t.id.slice(0, 8)}? The orchestrator should replace it automatically.`)) return;
     try {
       await api(`/admin/infra/tasks/${t.id}/stop`, { method: "POST" });
-      setToast(`Stopped ${t.service} ${t.id.slice(0, 8)}. Watch the replacement start…`);
+      setToast(`Stopped ${t.service} ${t.id.slice(0, 8)}. Watching for the replacement.`);
       setTimeout(() => setToast(""), 6000);
       load();
     } catch (e) {
@@ -152,145 +144,110 @@ function ClusterView() {
     }
   }
 
-  const kind = snap?.platform ?? "none";
-  const label = PLATFORM_LABEL[kind];
-  const allTasks = snap?.nodes.flatMap((n) => n.tasks) ?? [];
-  const running = allTasks.filter((t) => t.status === "RUNNING").length;
-  const services = [...new Set(allTasks.map((t) => t.service))];
-
   return (
-    <div className="flex min-h-screen flex-col bg-ink-900 text-slate-200">
-      <Navbar dark>
-        <nav className="hidden items-center gap-1 text-xs font-medium md:flex">
-          <Link href="/dispatch" className="rounded-md px-2.5 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white">Control room</Link>
-          <span className="rounded-md bg-white/10 px-2.5 py-1.5 text-white">Cluster view</span>
-          <a href="/grafana/" target="_blank" rel="noreferrer" className="rounded-md px-2.5 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white">Grafana ↗</a>
-        </nav>
-      </Navbar>
+    <div className="flex min-h-screen flex-col">
+      <Navbar items={DISPATCH_NAV} />
 
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 px-6 py-4">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-k-line bg-k-side px-5 py-3">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            <span>{label.icon}</span> {label.name}
-            {snap?.cluster && <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono normal-case tracking-normal text-slate-400">{snap.cluster}</span>}
-          </div>
-          <h1 className="mt-1 text-2xl font-bold text-white">Live container cluster</h1>
-          <p className="text-sm text-slate-400">
-            Every box is a real {label.node}; every chip is a running Docker container group ({label.task}). Click one to run a chaos test.
-          </p>
+          <div className="k-label">{P.name}{snap?.cluster ? ` · ${snap.cluster}` : ""}</div>
+          <h1 className="mt-0.5 text-base font-semibold text-k-hi">Container cluster</h1>
         </div>
-        <div className="flex items-center gap-6">
-          {[
-            [snap?.nodes.length ?? "–", label.node + "s"],
-            [running, kind === "kubernetes" ? "pods running" : "tasks running"],
-            [services.length, "services"],
-          ].map(([v, l]) => (
-            <div key={String(l)} className="text-right">
-              <div className="text-3xl font-bold tabular-nums text-white">{v}</div>
-              <div className="text-[11px] uppercase tracking-wider text-slate-500">{l}</div>
+        <div className="flex items-center divide-x divide-k-line">
+          {[[snap?.nodes.length ?? "–", P.nodes], [running, `${P.units} running`], [services.length, "Services"]].map(([v, l]) => (
+            <div key={String(l)} className="px-4 text-right">
+              <div className="font-mono text-xl text-k-hi">{v}</div>
+              <div className="k-label">{l}</div>
             </div>
           ))}
-          <button onClick={() => setPaused(!paused)} className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold ring-1 ring-white/10 hover:bg-white/10">
-            {paused ? "▶ Resume" : "⏸ Pause"}
-          </button>
+          <div className="pl-4">
+            <Button size="sm" variant="secondary" onClick={() => setPaused(!paused)}>
+              {paused ? <><Play className="h-3 w-3" /> Resume</> : <><Pause className="h-3 w-3" /> Pause</>}
+            </Button>
+          </div>
         </div>
       </div>
 
-      {snap?.services && snap.services.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-b border-white/5 px-6 py-3">
+      {snap && snap.services.length > 0 && (
+        <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-k-line px-5 py-2">
           {snap.services.map((s) => {
             const ok = s.running >= s.desired && s.pending === 0;
             return (
-              <div key={s.name} className="flex items-center gap-2 rounded-full bg-white/[0.04] py-1 pl-2 pr-3 text-xs ring-1 ring-white/10">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorFor(s.name) }} />
-                <span className="font-semibold text-slate-100">{s.name}</span>
-                <span className={`tabular-nums ${ok ? "text-emerald-400" : "text-amber-400"}`}>{s.running}/{s.desired}</span>
-                {s.pending > 0 && <span className="animate-pulse text-amber-400">+{s.pending} starting</span>}
+              <div key={s.name} className="flex items-center gap-1.5 text-xs">
+                <span className="h-2 w-2 rounded-[1px]" style={{ background: colorFor(s.name) }} />
+                <span className="text-k-hi">{s.name}</span>
+                <span className={`font-mono ${ok ? "text-k-label" : "text-k-warn"}`}>{s.running}/{s.desired}</span>
+                {s.pending > 0 && <span className="font-mono text-k-warn">+{s.pending}</span>}
               </div>
             );
           })}
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-6 xl:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-5 xl:flex-row">
         <main className="flex-1">
-          {snap?.error && <div className="mb-4 rounded-xl bg-rose-950/50 p-4 text-sm text-rose-300 ring-1 ring-rose-500/30">Platform API error: {snap.error}</div>}
+          {snap?.error && <div className="mb-4 rounded border border-k-err/40 bg-k-err/10 px-3 py-2 text-xs text-k-hi">Platform API error: {snap.error}</div>}
           {!snap ? (
-            <div className="grid h-64 place-items-center text-slate-500">Loading cluster…</div>
+            <div className="grid h-64 place-items-center text-k-label"><Spinner className="h-5 w-5" /></div>
           ) : kind === "none" ? (
-            <div className="rounded-2xl border border-dashed border-white/15 p-10 text-center">
-              <div className="text-4xl">🐳</div>
-              <div className="mt-3 font-semibold text-white">Running under Docker Compose</div>
-              <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">
-                The live cluster view appears when DispatchX runs on Amazon ECS (AWS deployment) or Kubernetes (<code>k8s/</code>).
-              </p>
+            <div className="rounded border border-dashed border-k-line p-10 text-center">
+              <div className="text-sm font-medium text-k-hi">Running under Docker Compose</div>
+              <p className="mx-auto mt-1 max-w-md text-xs text-k-label">The live cluster view appears when DispatchX runs on Amazon ECS (AWS) or Kubernetes (<code className="font-mono">k8s/</code>).</p>
             </div>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-              {snap.nodes.map((n) => (
-                <NodeCard key={n.id} n={n} kind={kind} selected={current?.id ?? null} onSelect={setSelected} />
-              ))}
+              {snap.nodes.map((n) => <NodePanel key={n.id} n={n} kind={kind} selected={current?.id ?? null} onSelect={setSelected} />)}
             </div>
           )}
         </main>
 
-        <aside className="w-full shrink-0 space-y-4 xl:w-96">
+        <aside className="w-full shrink-0 space-y-4 xl:w-[340px]">
           {current && (
-            <div className="rounded-2xl bg-ink-800 p-4 ring-1 ring-white/10">
-              <div className="flex items-center justify-between">
+            <section className="k-panel">
+              <header className="flex items-center justify-between border-b border-k-line px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full" style={{ background: colorFor(current.service) }} />
-                  <span className="font-semibold text-white">{current.service}</span>
+                  <span className="h-2 w-2 rounded-[1px]" style={{ background: colorFor(current.service) }} />
+                  <span className="text-sm font-semibold text-k-hi">{current.service}</span>
+                  <span className="k-label">{P.unit}</span>
                 </div>
-                <button onClick={() => setSelected(null)} className="text-slate-500 hover:text-white">✕</button>
-              </div>
-              <dl className="mt-3 grid grid-cols-3 gap-y-1.5 text-xs">
-                <dt className="text-slate-500">ID</dt><dd className="col-span-2 truncate font-mono text-slate-300">{current.id}</dd>
-                <dt className="text-slate-500">Status</dt><dd className="col-span-2 text-slate-300">{current.status.toLowerCase()} (desired {current.desired.toLowerCase()})</dd>
-                <dt className="text-slate-500">Health</dt><dd className="col-span-2 text-slate-300">{current.health.toLowerCase()}</dd>
-                <dt className="text-slate-500">Containers</dt><dd className="col-span-2 text-slate-300">{current.containers.join(", ")}</dd>
-                <dt className="text-slate-500">Reserved</dt><dd className="col-span-2 text-slate-300">{current.cpu} CPU · {current.memory} MiB</dd>
-                <dt className="text-slate-500">Uptime</dt><dd className="col-span-2 text-slate-300">{age(current.started_at)}</dd>
-                {current.stopped_reason && (<><dt className="text-slate-500">Stopped</dt><dd className="col-span-2 text-rose-300">{current.stopped_reason}</dd></>)}
+                <button onClick={() => setSelected(null)} className="rounded p-1 text-k-label hover:bg-k-panel hover:text-k-hi"><X className="h-3.5 w-3.5" /></button>
+              </header>
+              <dl className="divide-y divide-k-line/60 px-3 py-1">
+                <KV k="ID" v={current.id} mono />
+                <KV k="Status" v={`${current.status.toLowerCase()} → ${current.desired.toLowerCase()}`} />
+                <KV k="Health" v={current.health.toLowerCase()} />
+                <KV k="Containers" v={current.containers.join(", ")} mono />
+                <KV k="Reserved" v={`${current.cpu} cpu · ${current.memory} MiB`} mono />
+                <KV k="Uptime" v={age(current.started_at)} mono />
+                {current.stopped_reason && <KV k="Stop reason" v={current.stopped_reason} />}
               </dl>
               {current.status === "RUNNING" && current.desired !== "STOPPED" && (
-                <button onClick={() => kill(current)} className="mt-4 w-full rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">
-                  💥 Kill this {kind === "kubernetes" ? "pod" : "container"} (chaos test)
-                </button>
+                <div className="border-t border-k-line p-3">
+                  <Button variant="danger" className="w-full" onClick={() => kill(current)}>
+                    <Skull className="h-3.5 w-3.5" /> Chaos test: stop this {P.unit.toLowerCase()}
+                  </Button>
+                  <p className="mt-2 text-2xs text-k-label">The scheduler replaces it to restore the desired count; traffic shifts to healthy targets meanwhile.</p>
+                </div>
               )}
-            </div>
+            </section>
           )}
 
-          <div className="rounded-2xl bg-ink-800 p-4 ring-1 ring-white/10">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Scheduler events</div>
-            <ul className="mt-2 max-h-[28rem] space-y-2 overflow-y-auto pr-1 text-xs scrollbar-thin">
+          <section className="k-panel">
+            <header className="border-b border-k-line px-3 py-2 k-label">Scheduler events</header>
+            <ul className="max-h-[30rem] divide-y divide-k-line/50 overflow-y-auto k-scroll">
               {(snap?.events ?? []).map((e, i) => (
-                <li key={i} className="border-l-2 border-white/10 pl-2">
-                  <div className="text-[10px] text-slate-500">{e.at ? new Date(e.at).toLocaleTimeString() : ""}</div>
-                  <div className="text-slate-300">{e.message}</div>
+                <li key={i} className="px-3 py-2">
+                  <div className="font-mono text-2xs text-k-label">{e.at ? new Date(e.at).toLocaleTimeString([], { hour12: false }) : ""}</div>
+                  <div className="text-xs text-k-text">{e.message}</div>
                 </li>
               ))}
-              {snap && snap.events.length === 0 && <li className="text-slate-500">No recent events</li>}
+              {snap && snap.events.length === 0 && <li className="px-3 py-3 text-xs text-k-label">No recent events</li>}
             </ul>
-          </div>
-
-          <div className="rounded-2xl bg-ink-800 p-4 text-xs ring-1 ring-white/10">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Legend</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {services.map((s) => (
-                <div key={s} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: colorFor(s) }} />{s}</div>
-              ))}
-            </div>
-            <div className="mt-3 space-y-1 text-slate-400">
-              <div><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-400" />running · <span className="mx-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />starting · <span className="mx-1.5 inline-block h-2 w-2 rounded-full bg-rose-500" />stopping</div>
-            </div>
-          </div>
+          </section>
         </aside>
       </div>
 
-      {toast && (
-        <div className="fixed bottom-4 left-1/2 z-[2000] -translate-x-1/2 rounded-xl bg-white px-4 py-3 text-sm font-medium text-slate-900 shadow-xl">{toast}</div>
-      )}
+      {toast && <div className="fixed bottom-4 left-1/2 z-[2000] -translate-x-1/2 rounded border border-k-line bg-k-side px-4 py-2.5 text-sm text-k-hi shadow-2xl">{toast}</div>}
     </div>
   );
 }

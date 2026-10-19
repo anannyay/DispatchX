@@ -9,12 +9,23 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.1.1",
+    "@fontsource-variable/jetbrains-mono": "^5.1.2",
+    "@kepler.gl/actions": "3.3.0-alpha.14",
+    "@kepler.gl/components": "3.3.0-alpha.14",
+    "@kepler.gl/processors": "3.3.0-alpha.14",
+    "@kepler.gl/reducers": "3.3.0-alpha.14",
     "leaflet": "1.9.4",
+    "lucide-react": "^0.468.0",
+    "maplibre-gl": "^4.7.1",
     "next": "15.1.6",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-leaflet": "5.0.0",
-    "socket.io-client": "4.8.1"
+    "react-redux": "^9.2.0",
+    "redux": "^5.0.1",
+    "socket.io-client": "4.8.1",
+    "styled-components": "^6.4.3"
   },
   "devDependencies": {
     "@types/leaflet": "1.9.16",
@@ -25,5 +36,25 @@
     "postcss": "8.5.1",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3"
+  },
+  "overrides": {
+    "@deck.gl/aggregation-layers": "9.3.11",
+    "@deck.gl/core": "9.3.11",
+    "@deck.gl/extensions": "9.3.11",
+    "@deck.gl/geo-layers": "9.3.11",
+    "@deck.gl/layers": "9.3.11",
+    "@deck.gl/mapbox": "9.3.11",
+    "@deck.gl/mesh-layers": "9.3.11",
+    "@deck.gl/react": "9.3.11",
+    "@deck.gl/widgets": "9.3.11",
+    "@luma.gl/constants": "9.3.6",
+    "@luma.gl/core": "9.3.6",
+    "@luma.gl/effects": "9.3.6",
+    "@luma.gl/engine": "9.3.6",
+    "@luma.gl/gltf": "9.3.6",
+    "@luma.gl/gpgpu": "9.3.6",
+    "@luma.gl/shadertools": "9.3.6",
+    "@luma.gl/webgl": "9.3.6",
+    "@luma.gl/webgpu": "9.3.6"
   }
 }

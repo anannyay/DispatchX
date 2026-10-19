@@ -36,7 +36,7 @@ def me(user: User = Depends(require_rider), db: Session = Depends(get_db)):
         "rating": profile.rating if profile else None,
         "deliveries": profile.deliveries if profile else 0,
         "earnings": profile.earnings if profile else 0,
-        "online": r.sismember(ONLINE, user.id),
+        "online": bool(r.sismember(ONLINE, user.id)),
         "active_order": serialize(active) if active else None,
         "offer": offer,
     }

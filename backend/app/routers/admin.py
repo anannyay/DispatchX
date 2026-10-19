@@ -59,7 +59,7 @@ def fleet(_: User = Depends(require_staff)):
             "rider_id": int(rid), "name": st.get("name"), "lat": float(st["lat"]), "lng": float(st["lng"]),
             "heading": float(st.get("heading") or 0),
             "order_id": int(st["order_id"]) if st.get("order_id") else None,
-            "available": r.sismember(AVAILABLE, rid), "offer": r.get(rider_offer(rid)),
+            "available": bool(r.sismember(AVAILABLE, rid)), "offer": r.get(rider_offer(rid)),
             "vehicle": st.get("vehicle"), "rating": float(st.get("rating") or 0),
             "last_seen_s": round(now - float(st.get("ts", now)), 1),
         })
@@ -69,8 +69,8 @@ def fleet(_: User = Depends(require_staff)):
 @router.get("/riders")
 def riders(_: User = Depends(require_staff), db: Session = Depends(get_db)):
     users = db.query(User).filter(User.role == Role.rider).order_by(User.id).limit(500).all()
-    return [{"id": u.id, "name": u.name, "online": r.sismember(ONLINE, u.id),
-             "available": r.sismember(AVAILABLE, u.id)} for u in users]
+    return [{"id": u.id, "name": u.name, "online": bool(r.sismember(ONLINE, u.id)),
+             "available": bool(r.sismember(AVAILABLE, u.id))} for u in users]
 
 
 @router.post("/orders/{order_id}/redispatch")

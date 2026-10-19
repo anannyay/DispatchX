@@ -6,7 +6,7 @@ import type { MapProps } from "./Map";
 // Leaflet touches `window`, so it is loaded only in the browser
 const Map = dynamic(() => import("./Map"), {
   ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse bg-slate-200" />,
+  loading: () => <div className="h-full w-full bg-[#0e1116]" />,
 });
 
 export default function MapView(props: MapProps) {

@@ -37,40 +37,35 @@ export interface MapProps {
   className?: string;
 }
 
-const PIN = (color: string, glyph: string) =>
-  `<div class="fp-pin" style="--c:${color}"><span>${glyph}</span></div>`;
+const COLORS: Record<MarkerKind, string> = {
+  pickup: "#1FBAD6",
+  drop: "#F25F5C",
+  rider: "#1FBAD6",
+  "rider-busy": "#A08CF5",
+  "rider-offer": "#F0B429",
+  me: "#1FBAD6",
+  order: "#F0B429",
+};
 
 function iconFor(m: MapMarker) {
+  const c = m.highlight && m.kind === "order" ? "#F25F5C" : COLORS[m.kind];
+  const tag = m.kind === "pickup" || m.kind === "drop" ? `<span class="k-tag">${m.kind === "pickup" ? "Pickup" : "Drop"}</span>` : "";
   switch (m.kind) {
     case "pickup":
-      return L.divIcon({ className: "", html: PIN("#10b981", "A"), iconSize: [30, 40], iconAnchor: [15, 38] });
+      return L.divIcon({ className: "", html: `<div style="--c:${c};position:relative"><div class="k-pt"></div>${tag}</div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
     case "drop":
-      return L.divIcon({ className: "", html: PIN("#ef4444", "B"), iconSize: [30, 40], iconAnchor: [15, 38] });
+      return L.divIcon({ className: "", html: `<div style="--c:${c};position:relative"><div class="k-pt-ring"></div>${tag}</div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
     case "order":
-      return L.divIcon({
-        className: "",
-        html: `<div class="fp-order ${m.highlight ? "fp-order-hot" : ""}"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      });
+      return L.divIcon({ className: "", html: `<div class="k-pt" style="--c:${c};width:10px;height:10px"></div>`, iconSize: [10, 10], iconAnchor: [5, 5] });
     case "me":
+      return L.divIcon({ className: "k-smooth", html: `<div class="k-me"><u></u><i></i></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+    default:
       return L.divIcon({
-        className: "fp-smooth",
-        html: `<div class="fp-me"><i></i></div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
+        className: "k-smooth",
+        html: `<div class="k-veh" style="--c:${c}"><b style="transform:rotate(${m.heading ?? 0}deg)"></b><i></i></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
       });
-    default: {
-      const color = m.kind === "rider" ? "#10b981" : m.kind === "rider-offer" ? "#f59e0b" : "#6366f1";
-      return L.divIcon({
-        className: "fp-smooth",
-        html: `<div class="fp-rider ${m.highlight ? "fp-rider-hl" : ""}" style="--c:${color}">
-                 <div class="fp-arrow" style="transform:rotate(${m.heading ?? 0}deg)"></div>
-                 <span>🛵</span></div>`,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
-      });
-    }
   }
 }
 
@@ -100,7 +95,7 @@ function MarkerItem({ m }: { m: MapMarker }) {
       eventHandlers={m.onClick ? { click: m.onClick } : undefined}
       zIndexOffset={m.kind.startsWith("rider") || m.kind === "me" ? 500 : 0}
     >
-      {m.label && <Tooltip direction="top" offset={[0, -14]}>{m.label}</Tooltip>}
+      {m.label && <Tooltip direction="top" offset={[0, -10]}>{m.label}</Tooltip>}
     </Marker>
   );
 }
@@ -108,9 +103,9 @@ function MarkerItem({ m }: { m: MapMarker }) {
 export default function Map({
   center, zoom = 13, markers = [], lines = [], onMapClick, fitTo, fitKey, dark, className,
 }: MapProps) {
-  const tiles = dark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  // CARTO dark-matter: the same basemap kepler.gl uses by default
+  const tiles = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  void dark;
   return (
     <MapContainer center={center} zoom={zoom} className={className ?? "h-full w-full"} zoomControl={false}>
       <TileLayer
@@ -123,7 +118,7 @@ export default function Map({
         <Polyline
           key={l.id}
           positions={l.points}
-          pathOptions={{ color: l.color ?? "#10b981", weight: 4, opacity: 0.8, dashArray: l.dashed ? "6 8" : undefined }}
+          pathOptions={{ color: l.color ?? "#1FBAD6", weight: l.dashed ? 1.5 : 3, opacity: l.dashed ? 0.6 : 0.9, dashArray: l.dashed ? "4 6" : undefined }}
         />
       ))}
       {markers.map((m) => (
