@@ -21,6 +21,7 @@ BACKEND_ENV = """Environment:
   - { Name: SQS_NOTIFY_QUEUE_URL, Value: !Ref NotifyQueueUrl }
   - { Name: S3_BUCKET, Value: !Ref PodBucketName }
   - { Name: CELERY_POOL, Value: threads }
+  - { Name: ECS_CLUSTER, Value: !Sub "${Project}-cluster" }
   - { Name: CELERY_CONCURRENCY, Value: "8" }
 Secrets:
   - { Name: DB_USER, ValueFrom: !Sub "${DbSecretArn}:username::" }

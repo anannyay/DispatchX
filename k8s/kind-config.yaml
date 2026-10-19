@@ -1,0 +1,18 @@
+# Local 3-node Kubernetes cluster running inside Docker (kind).
+# One control plane (also hosts the ingress controller) + two workers labelled
+# as different "zones" so pod spreading is visible, like two AWS AZs.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: dispatchx
+nodes:
+  - role: control-plane
+    labels:
+      ingress-ready: "true"
+    extraPortMappings:
+      - { containerPort: 80, hostPort: 8080, protocol: TCP }   # http://localhost:8080
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-a
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-b

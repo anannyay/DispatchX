@@ -15,7 +15,8 @@ backend/     FastAPI API + Socket.IO + Celery workers + SQS consumer (one image,
 frontend/    Next.js app: customer, rider and dispatcher experiences
 simulator/   Load / demo generator: N virtual riders + customers
 monitoring/  Prometheus + Grafana config
-infra/       AWS CloudFormation (coming next)
+infra/       AWS CloudFormation (nested stacks) + CI/CD → see infra/README.md
+k8s/         Same app on Kubernetes (kind) with HPA, Ingress, StatefulSet → see k8s/README.md
 ```
 
 ## Run locally

@@ -399,6 +399,16 @@ Resources:
                 Effect: Allow
                 Action: cloudwatch:PutMetricData
                 Resource: "*"
+              - Sid: ClusterViewRead
+                Effect: Allow
+                Action: [ecs:ListContainerInstances, ecs:DescribeContainerInstances, ecs:ListTasks, ecs:DescribeTasks, ecs:ListServices, ecs:DescribeServices]
+                Resource: "*"
+              - Sid: ClusterViewChaosStop      # only tasks in this cluster
+                Effect: Allow
+                Action: ecs:StopTask
+                Resource: "*"
+                Condition:
+                  ArnEquals: { ecs:cluster: !GetAtt Cluster.Arn }
               - Sid: EcsExec
                 Effect: Allow
                 Action: [ssmmessages:CreateControlChannel, ssmmessages:CreateDataChannel, ssmmessages:OpenControlChannel, ssmmessages:OpenDataChannel]

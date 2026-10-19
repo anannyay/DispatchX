@@ -1,0 +1,26 @@
+# Celery Beat scheduler. Must never run twice, so Recreate (stop old, then start new).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beat
+  labels: { app: beat }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: beat }
+  template:
+    metadata:
+      labels: { app: beat }
+    spec:
+      containers:
+        - name: beat
+          image: dispatchx/backend:local
+          imagePullPolicy: IfNotPresent
+          args: [beat]
+          envFrom:
+            - configMapRef: { name: dispatchx-config }
+            - secretRef: { name: dispatchx-secrets }
+          resources:
+            requests: { cpu: 20m, memory: 96Mi }
+            limits: { memory: 256Mi }

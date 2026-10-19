@@ -54,6 +54,11 @@ jobs:
           git diff --exit-code infra/stacks/app.yml || { echo "::error::infra/stacks/app.yml is stale, run infra/src/build.py"; exit 1; }
           python infra/src/check_params.py
           cfn-lint
+      - name: Unit tests
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+        run: python -m pytest -q tests/test_infra.py
       - name: End-to-end smoke test (SQLite + Redis)
         working-directory: backend
         env:

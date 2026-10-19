@@ -141,7 +141,11 @@ function ControlRoom() {
   return (
     <div className="flex h-screen flex-col bg-ink-900 text-slate-200">
       <Navbar dark>
-        <span className="hidden rounded-md bg-white/5 px-2 py-1 text-xs font-medium text-slate-400 md:inline">Dispatch control room</span>
+        <nav className="hidden items-center gap-1 text-xs font-medium md:flex">
+          <span className="rounded-md bg-white/10 px-2.5 py-1.5 text-white">Control room</span>
+          <Link href="/dispatch/cluster" className="rounded-md px-2.5 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white">Cluster view</Link>
+          <a href="/grafana/" target="_blank" rel="noreferrer" className="rounded-md px-2.5 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white">Grafana ↗</a>
+        </nav>
       </Navbar>
       <div className="grid grid-cols-2 gap-2 border-b border-white/5 p-3 sm:grid-cols-4 xl:grid-cols-8">
         <Stat label="Riders online" value={s?.riders_online ?? "–"} />

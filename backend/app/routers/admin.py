@@ -1,3 +1,4 @@
+import re
 import statistics
 import time
 from datetime import timedelta
@@ -11,6 +12,7 @@ from app.deps import require_staff
 from app.models import Order, OrderStatus, Role, User, utcnow
 from app.redis_client import AVAILABLE, ONLINE, metric, order_offer, order_tried, r, rider_offer, rider_state
 from app.schemas import AssignIn
+from app.services import infra
 from app.services.dispatch import OfferError, accept_offer, release_rider
 from app.services.orders import InvalidTransition, serialize, transition
 
@@ -109,3 +111,25 @@ def force_assign(order_id: int, body: AssignIn, user: User = Depends(require_sta
     except OfferError as e:
         raise HTTPException(409, str(e))
     return serialize(order)
+
+
+@router.get("/infra")
+def infrastructure(_: User = Depends(require_staff)):
+    """Live container platform snapshot (ECS or Kubernetes) for the Cluster View."""
+    try:
+        return infra.snapshot()
+    except Exception as e:  # never break the dashboard because the platform API hiccups
+        return {"platform": infra.platform(), "error": f"{e.__class__.__name__}: {e}",
+                "nodes": [], "services": [], "events": []}
+
+
+@router.post("/infra/tasks/{task_id}/stop")
+def chaos_stop(task_id: str, user: User = Depends(require_staff)):
+    """Chaos engineering: kill a running task/pod and watch the orchestrator heal."""
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,128}", task_id):
+        raise HTTPException(400, "Bad task id")
+    try:
+        infra.stop(task_id)
+    except Exception as e:
+        raise HTTPException(502, f"Could not stop task: {e}")
+    return {"ok": True, "stopped": task_id, "by": user.email}

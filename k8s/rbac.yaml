@@ -1,0 +1,56 @@
+# The API's service account may read pods/nodes/deployments/events (Cluster View)
+# and delete pods in this namespace (chaos test). Nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dispatchx-api
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-view
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [list]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-view
+subjects:
+  - kind: ServiceAccount
+    name: dispatchx-api
+    namespace: dispatchx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dispatchx-node-reader
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dispatchx-node-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dispatchx-node-reader
+subjects:
+  - kind: ServiceAccount
+    name: dispatchx-api
+    namespace: dispatchx

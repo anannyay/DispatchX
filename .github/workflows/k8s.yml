@@ -1,0 +1,62 @@
+name: Kubernetes (kind) e2e
+
+on:
+  push:
+    branches: [main]
+    paths: [k8s/**, backend/**, frontend/**, .github/workflows/k8s.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kind:
+    name: Deploy to kind + smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kind
+        run: |
+          curl -sSLo /usr/local/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/v0.24.0/kind-linux-amd64
+          chmod +x /usr/local/bin/kind
+          kind version && kubectl version --client
+      - name: k8s/up.sh (the same script the team runs locally)
+        run: ./k8s/up.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install httpx "python-socketio[client]==5.12.1"
+      - name: Smoke test through the NGINX ingress
+        run: |
+          for i in 1 2 3 4 5; do
+            BASE_URL=http://localhost:8080 python backend/tests/smoke_e2e.py && break
+            [ $i = 5 ] && exit 1; sleep 15
+          done
+      - name: Cluster View sees the Kubernetes cluster
+        run: |
+          python - <<'PY'
+          import httpx
+          c = httpx.Client(base_url="http://localhost:8080", timeout=20)
+          tok = c.post("/api/auth/login", json={"email": "dispatch@dispatchx.dev", "password": "dispatchx123"}).json()["access_token"]
+          s = c.get("/api/admin/infra", headers={"Authorization": f"Bearer {tok}"}).json()
+          pods = sum(len(n["tasks"]) for n in s["nodes"])
+          print(f"platform={s['platform']} nodes={len(s['nodes'])} pods={pods} services={[x['name'] for x in s['services']]}")
+          assert s["platform"] == "kubernetes", s
+          assert len(s["nodes"]) == 3, s
+          assert pods >= 6, s
+          print(f"::notice title=Kubernetes e2e::{len(s['nodes'])} nodes, {pods} pods, services {[x['name'] for x in s['services']]}")
+          PY
+      - name: Show cluster state
+        if: always()
+        run: |
+          kubectl -n dispatchx get pods -o wide || true
+          kubectl -n dispatchx get hpa,ingress,svc || true
+      - name: Diagnose failure
+        if: failure()
+        run: |
+          kubectl -n dispatchx describe pods | tail -80 || true
+          for d in api worker web; do echo "--- $d"; kubectl -n dispatchx logs deploy/$d --tail=40 || true; done
+          msg=$(kubectl -n dispatchx get events --sort-by=.lastTimestamp | tail -15 | tr '\n' '|' )
+          echo "::error title=Kubernetes events::$msg"
+          echo "::error title=api logs::$(kubectl -n dispatchx logs deploy/api --tail=20 2>&1 | tr '\n' '|')"

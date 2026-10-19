@@ -1,0 +1,26 @@
+# Non-secret settings (ConfigMap) and credentials (Secret), injected as env vars.
+# The ECS deployment gets the same values from task definitions + Secrets Manager.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dispatchx-config
+data:
+  ENVIRONMENT: kubernetes
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_NAME: dispatchx
+  REDIS_URL: redis://redis:6379/0
+  CELERY_POOL: threads
+  CELERY_CONCURRENCY: "4"
+  PUBLIC_API_URL: http://localhost:8080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dispatchx-secrets
+type: Opaque
+stringData:          # demo values for a local cluster only
+  DB_USER: dispatchx
+  DB_PASSWORD: dispatchx-local
+  MYSQL_ROOT_PASSWORD: root-local
+  JWT_SECRET: local-kubernetes-jwt-secret

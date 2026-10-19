@@ -94,3 +94,40 @@ export interface Offer {
   expires_in: number;
   expires_at?: number;
 }
+
+export interface InfraTask {
+  id: string;
+  service: string;
+  status: string;
+  desired: string;
+  health: string;
+  cpu: number;
+  memory: number;
+  containers: string[];
+  started_at: string | null;
+  stopped_reason: string | null;
+}
+
+export interface InfraNode {
+  id: string;
+  name: string | null;
+  zone: string | null;
+  instance_type: string | null;
+  status: string;
+  cpu_total: number;
+  cpu_used: number;
+  mem_total: number;
+  mem_used: number;
+  started_at: string | null;
+  tasks: InfraTask[];
+}
+
+export interface InfraSnapshot {
+  platform: "ecs" | "kubernetes" | "none";
+  cluster: string | null;
+  nodes: InfraNode[];
+  services: { name: string; desired: number; running: number; pending: number }[];
+  events: { at: string; message: string }[];
+  fetched_at?: string;
+  error?: string;
+}
