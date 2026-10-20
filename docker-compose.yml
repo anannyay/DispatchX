@@ -3,7 +3,7 @@
 x-backend: &backend
   build: ./backend
   env_file: .env.local
-  depends_on:
+  depends_on: &backend-dependencies
     mysql: { condition: service_healthy }
     redis: { condition: service_healthy }
   restart: unless-stopped
@@ -19,9 +19,17 @@ services:
     ports: ["3306:3306"]
     volumes: [mysql-data:/var/lib/mysql]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      # The temporary init server is socket-only; require the app database over TCP.
+      test:
+        - CMD-SHELL
+        - >-
+          mysql --protocol=TCP --host=127.0.0.1 --port=3306
+          --user="$${MYSQL_USER}" --password="$${MYSQL_PASSWORD}"
+          --database="$${MYSQL_DATABASE}" --execute="SELECT 1" --connect-timeout=3
       interval: 5s
+      timeout: 5s
       retries: 20
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -35,14 +43,33 @@ services:
     command: api
     ports: ["8000:8000"]
     volumes: [uploads:/tmp/dispatchx-uploads]
+    # The API entrypoint completes migrations before starting the HTTP server.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3).close()
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   worker:
     <<: *backend
     command: worker
+    depends_on:
+      <<: *backend-dependencies
+      api: { condition: service_healthy }
 
   beat:
     <<: *backend
     command: beat
+    depends_on:
+      <<: *backend-dependencies
+      api: { condition: service_healthy }
 
   web:
     build:
@@ -50,7 +77,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
     ports: ["3000:3000"]
-    depends_on: [api]
+    depends_on:
+      api: { condition: service_healthy }
 
   prometheus:
     image: prom/prometheus:v2.54.1
