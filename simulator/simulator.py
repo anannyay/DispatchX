@@ -252,7 +252,10 @@ async def main(args):
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, stop.set)
+            try:
+                loop.add_signal_handler(sig, stop.set)
+            except NotImplementedError:   # Windows event loops have no add_signal_handler
+                signal.signal(sig, lambda *_: loop.call_soon_threadsafe(stop.set))
         if args.duration:
             loop.call_later(args.duration, stop.set)
         await stop.wait()
