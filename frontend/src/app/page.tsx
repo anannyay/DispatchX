@@ -21,7 +21,7 @@ export default function Home() {
       <header className="dx-home-header">
         <Wordmark />
         <nav aria-label="Main navigation">
-          <Link href="/architecture">Cloud explorer</Link>
+          <Link href="/demo">Demo guide</Link>
           <a href="https://github.com/anannyay/DispatchX" target="_blank" rel="noreferrer" className="dx-source-nav">Source code</a>
           <Link href={demo} className="dx-nav-demo">{user ? "Open console" : "Open demo"} <ArrowRight size={14} /></Link>
         </nav>

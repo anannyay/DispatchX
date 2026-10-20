@@ -139,15 +139,17 @@ The test refuses non-local preview hosts and never exercises the stop-task butto
 
 ## Next step and remaining safety boundary
 
-First, review the local presentation with the owners, starting at `/architecture?layer=services`.
-Before any public deployment, gate the existing destructive chaos endpoint independently of
-the public dispatcher demo: `backend/app/routers/admin.py::chaos_stop` still uses `require_staff`.
-Disabling its button while snapshots are stale is a UX safeguard, **not an authorization fix**.
-This pre-existing public-demo risk remains unresolved; no destructive request was sent.
+The later pass adds `/demo` and `docs/DEMO-RUNBOOK.md` as the presentation entry points.
+`docs/SCALABILITY-PROGRESS.md` records the expanded checks, including actual local delivery
+and MySQL concurrency. The earlier verification table above is retained as history.
 
-After that, run the real customer → rider → dispatcher lifecycle against an explicitly chosen
-local/test stack and then the existing backend smoke test. Validate actual recovery separately
-from animation. Publishing or pushing to `main` is not part of this local completion; frontend
+`backend/app/routers/admin.py::chaos_stop` now additionally requires admin and explicit
+deployment opt-in, default off. Never enable chaos with the seeded public admin account.
+Stale-button disabling remains a UX safeguard, **not the authorization boundary**.
+Permission tests do not stop any real workload or establish failover.
+
+Review the local flow with the owners. Validate actual cloud recovery separately
+from animation. Merging or pushing to `main` is not part of this completion; frontend
 changes on `main` automatically trigger the paid-credit AWS deployment workflow.
 
 Keep the original presentation/viva material at `docs/presentation-guide.html`. Unrelated local

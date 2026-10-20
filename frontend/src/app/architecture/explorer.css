@@ -6,6 +6,8 @@
 .explorer-nav-link.is-current { border-color: #36bed7; }
 .explorer-console-link { margin-left: auto; display: flex; align-items: center; gap: 9px; font-size: 12px; color: #c7d5e7; }
 .explorer-console-link:hover { color: #36bed7; }
+.explorer-header-actions { display: flex; align-items: center; margin-left: auto; gap: 18px; }
+.explorer-header-actions .explorer-console-link { margin-left: 0; white-space: nowrap; }
 .explorer-shell { max-width: 1580px; padding: 0 34px; margin: 0 auto; }
 .explorer-intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 48px 0 34px; }
 .explorer-eyebrow { display: flex; align-items: center; gap: 8px; color: #91a1b8; font: 500 10px/16px "JetBrains Mono Variable", monospace; letter-spacing: .09em; }
@@ -176,7 +178,9 @@
   .explorer-playback { max-width: 300px; }
 }
 @media (max-width: 620px) {
-  .explorer-header { padding: 0 16px; gap: 22px; height: 55px; }
+  .explorer-header { padding: 0 16px; gap: 12px; height: 55px; }
+  .explorer-header-actions { gap: 12px; }
+  .explorer-header-actions .explorer-console-link { font-size: 10px; gap: 5px; }
   .explorer-header nav { display: none; }
   .explorer-shell { padding: 0 14px; }
   .explorer-intro { padding: 32px 0 24px; }

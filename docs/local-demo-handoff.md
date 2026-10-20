@@ -5,6 +5,11 @@ Branch: `codex/cloud-explorer`; upstream PR: `anannyay/DispatchX#1`.
 This supersedes the initial handoff's statement that the real delivery lifecycle had not run.
 **No AWS operations or deployment were performed.**
 
+**Subsequent update:** `docs/SCALABILITY-PROGRESS.md` records the configurable `/demo`,
+System signals, booking/dispatch safeguards and the expanded verification. The evidence table
+below describes the earlier pass; current counts are 106 backend tests, 46 frontend tests and
+46 browser scenarios. `docs/DEMO-RUNBOOK.md` is the exact current presentation sequence.
+
 ## What changed in the actual application
 
 - `docker-compose.yml`: MySQL readiness now requires an authenticated TCP query against
@@ -56,9 +61,9 @@ not weakened in the repository.
   use port 3000 for authenticated application flows in this preview arrangement).
 - Colima runs Compose project **`dispatchx-demo`**: MySQL, Redis, API, worker and Beat.
   MySQL/Redis are internal only; API port 8000 is bound to loopback.
-- Twenty simulated riders and five simulated customers were seeded. A finite 900-second
-  simulation was started in container **`dispatchx-demo-simulator`**, targeting six
-  orders/minute. It stops automatically; stop early with `docker stop dispatchx-demo-simulator`.
+- Twenty simulated riders and five simulated customers were seeded. The earlier finite
+  900-second simulation in **`dispatchx-demo-simulator`** has exited. No simulator was running
+  during the latest manual/scripted delivery checks. Start a bounded preset only afterward.
 
 The isolated run used temporary `dispatchx-safe-local.override.yml` and
 `dispatchx-preview-proxy.cjs` files in the session's approved temporary directory. Those contain
@@ -79,7 +84,7 @@ docker compose exec api python -m app.seed --riders 20 --customers 5
 
 Use the one-click demo roles at `/login`. To act as multiple roles simultaneously, use
 **separate browser profiles/private sessions**, not ordinary tabs sharing localStorage.
-For an uninterrupted manual journey, pause the simulator first and put the demo rider
+For an uninterrupted manual journey, stop the simulator first and put the demo rider
 online near the customer's pickup. The scripted browser test refuses an already-busy
 demo rider rather than completing someone else's delivery.
 
@@ -104,8 +109,9 @@ python -m venv .venv
 ## Honest remaining boundary
 
 This is now a verified **local delivery demo**, not a claim of complete production readiness.
-The pre-existing staff-accessible chaos-stop endpoint still needs backend restriction before
-exposing the public demo. No remote health check, cloud deployment, live managed-S3 upload,
+The subsequent pass restricts chaos-stop to admin plus explicit deployment opt-in, off by
+default. Never enable it with the public seeded admin account. No remote health check,
+cloud deployment, live managed-S3 upload,
 or real ECS/Kubernetes failover was performed. All follow-up changes belong on the same PR;
 merging to `main` can trigger AWS deployment and is a separate decision.
 

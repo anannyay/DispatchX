@@ -8,6 +8,23 @@ whole fleet from a control room.
 Alembic · JWT · Socket.IO · Celery · Redis · SNS · SQS · Docker · EC2 · RDS · S3 ·
 CloudWatch · Prometheus · Grafana
 
+## Present the project
+
+Start at **`/demo`** for the eight-minute presentation, **Explain / Busy fleet / Failure/retry**
+presets, editable bounded settings, and copyable PowerShell/POSIX commands. The page only
+generates commands; it never starts a simulator or cloud resources. Complete the three-role
+delivery before running optional load.
+
+- [Exact click/say/observe runbook](docs/DEMO-RUNBOOK.md)
+- [Implementation progress, test evidence and measured limits](docs/SCALABILITY-PROGRESS.md)
+- **`/dispatch/system`**: authenticated application signals with freshness, unknown/error
+  states, pause/retry, and bounded browser history. Its Celery ready-queue count is not SQS
+  backlog or total work in flight.
+
+Demo navigation remains available across desktop and mobile consoles. Infrastructure stop
+actions are disabled by default; they require both an administrator and deployment opt-in.
+Do not enable chaos testing in a deployment exposing the seeded public admin account.
+
 ## Explore the cloud architecture
 
 Open **`/architecture`** in the web app for the public, backend-independent cloud explorer.
@@ -55,10 +72,11 @@ Demo logins (password `dispatchx123`): `customer@dispatchx.dev`, `rider@dispatch
 ```bash
 cd simulator
 pip install -r requirements.txt
-python simulator.py --riders 60 --orders-per-min 25        # Ctrl+C to stop
+python simulator.py --riders 20 --customers 5 --orders-per-min 6 --duration 300
 ```
 
 Open the dispatcher view to watch the fleet move, orders get matched and deliveries complete.
+The run ends after five minutes; Ctrl+C stops it early. Saved orders/queued work can remain.
 
 ### End-to-end smoke test
 
@@ -85,13 +103,25 @@ which writes the audit log, pushes the update over Socket.IO and publishes a dom
    widening the radius 3 → 6 → 12 → 25 km on each failed round.
 2. Candidates are scored on distance and rating. Busy riders, riders with stale GPS and riders who
    already declined are skipped.
-3. The best rider gets an **offer with a 20 s countdown**. A per-rider `SET NX` lock means no rider
-   ever sees two offers at once, even with many workers dispatching in parallel.
+3. The best rider gets an **offer with a 20 s countdown**. A per-rider `SET NX` reservation
+   suppresses competing offers while the key is live; conditional cleanup preserves newer reservations.
 4. A **Celery countdown task** expires ignored offers and moves on to the next rider.
-5. Acceptance is an atomic conditional `UPDATE … WHERE status='pending'`, so two riders can never
-   win the same order.
-6. Safety nets: a per-order dispatch lock makes duplicate SQS deliveries harmless, and a Celery Beat
-   job re-dispatches any pending order whose offer was lost.
+5. Acceptance locks the rider profile, checks active work using a current read, then conditionally
+   updates the pending order. This coordinates competing accept calls in MySQL.
+6. Safety nets: an ownership-checked per-order lock suppresses duplicate dispatch within its lease,
+   and a Celery Beat job re-dispatches pending orders whose offer was lost. SQL, Redis and event
+   publication are not one transaction; this is not an exactly-once guarantee.
+
+### Safe booking retries
+`POST /api/orders` accepts an optional `Idempotency-Key` (8–128 characters from
+`A-Z`, `a-z`, `0-9`, `.`, `_`, `:`, `-`). The same customer/key/validated payload returns the
+original order ID with HTTP 201; conflicting payload reuse returns 409. Invalid keys return 422.
+Without the header each request is a new booking. Keys are case-sensitive, stored as hashes,
+retained without expiry, and scoped to the customer. Migration `0002` adds the durable identity.
+
+The customer form reuses its key for unchanged retries while mounted; changing the request or
+reloading starts a new attempt. Order, identity and initial audit commit together. Event
+publication remains after commit; a transactional outbox is still needed to close that gap.
 
 ### Real time across many servers
 Each API instance runs a Socket.IO server attached to a shared **Redis pub/sub** channel. Workers
@@ -133,3 +163,4 @@ breaches. `/api/health` serves ALB health checks; `/api/ready` checks the databa
 | `SQS_DISPATCH_QUEUE_URL` `SQS_NOTIFY_QUEUE_URL` | Queues read by the `consumer` role |
 | `S3_BUCKET` | Proof-of-delivery photos. When unset, photos are stored on local disk |
 | `PUBLIC_API_URL` | Base URL used for local upload links |
+| `ENABLE_CHAOS_TESTS` | Default `false`; task-stop additionally requires admin. Never enable with public demo admin access |

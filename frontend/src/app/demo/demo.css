@@ -1,0 +1,115 @@
+.demo-page {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.demo-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid #3a414c;
+  background: #242730;
+}
+
+.demo-topbar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px 16px;
+}
+
+.demo-navigation, .demo-jump-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.demo-link-button, .demo-page .demo-control {
+  display: inline-flex;
+  min-height: 44px;
+  height: auto;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #3a414c;
+  border-radius: 4px;
+  background: #29323c;
+  color: #f0f0f0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
+.demo-link-button:hover, .demo-page .demo-control:hover:not(:disabled) {
+  background: #3a414c;
+  border-color: #1fbad6;
+}
+
+.demo-page button:disabled {
+  opacity: 1;
+  color: #a0a7b4;
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+.demo-page :is(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #1fbad6;
+  outline-offset: 3px;
+}
+
+.demo-page svg { flex-shrink: 0; }
+.demo-page :is(input, select, textarea) { min-width: 0; max-width: 100%; }
+.demo-page :is(input, select) { min-height: 44px; }
+.demo-page [aria-invalid="true"] { border-color: #f0b429; }
+.demo-page [id] { scroll-margin-top: 132px; }
+.demo-page code { font-size: 0.9em; overflow-wrap: anywhere; }
+
+.demo-main {
+  display: grid;
+  gap: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 16px 40px;
+}
+
+.demo-main > *, .demo-main section { min-width: 0; }
+.demo-jump-links a { padding: 10px 8px; color: #1fbad6; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.demo-section-heading, .demo-step-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid #3a414c; }
+.demo-section-body { padding: 16px; }
+.demo-notice { padding: 12px; border-left: 2px solid #1fbad6; background: #29323c; font-size: 13px; line-height: 1.65; }
+.demo-preset-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.demo-preset-row label { flex-basis: 240px; }
+.demo-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.demo-field-error { min-height: 20px; margin-top: 4px; color: #f0b429; font-size: 12px; }
+.demo-command-grid { display: grid; gap: 16px; }
+.demo-command { padding: 12px; border: 1px solid #3a414c; border-radius: 4px; min-width: 0; }
+.demo-command-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: 13px; }
+.demo-page .demo-command-text { width: 100%; min-height: 144px; resize: vertical; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.demo-copy-status { min-height: 48px; margin-top: 8px; }
+.demo-scope-grid { display: grid; gap: 16px; }
+.demo-step-instructions { padding: 16px; display: grid; gap: 14px; font-size: 13px; line-height: 1.7; }
+.demo-step-instructions > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 12px; }
+.demo-step-instructions dt { color: #f0f0f0; font-weight: 600; }
+.demo-terminal { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+
+@media (min-width: 800px) {
+  .demo-main { padding: 32px 24px 48px; }
+  .demo-command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .demo-field-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .demo-scope-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .demo-field-grid { grid-template-columns: minmax(0, 1fr); }
+  .demo-step-instructions > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .demo-step-heading .demo-link-button, .demo-command-heading .demo-control { width: 100%; }
+  .demo-navigation { width: 100%; }
+  .demo-navigation a { flex: 1; }
+}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { useAuth } from "@/lib/auth";
+import { homeFor, useAuth } from "@/lib/auth";
 import { useSocket } from "@/lib/socket";
 
 export function Wordmark() {
@@ -34,13 +34,18 @@ export default function Navbar({ items = [] }: { items?: NavItem[] }) {
   const { user, logout } = useAuth();
   const { connected } = useSocket();
   const path = usePathname();
+  const primary: NavItem[] = items.length ? items : user ? [{ href: homeFor(user.role), label: user.role === "rider" ? "Rider console" : "Deliveries" }] : [];
+  const links: NavItem[] = [...primary, ...[
+    { href: "/demo", label: "Demo guide" },
+    { href: "/architecture", label: "Cloud explorer" },
+  ].filter((link) => !primary.some((item) => item.href === link.href))];
   return (
     <>
     <header className="sticky top-0 z-[1000] flex h-12 shrink-0 items-center justify-between border-b border-k-line bg-k-side px-4">
       <div className="flex h-full items-center gap-6">
         <Wordmark />
-        <nav aria-label="Console navigation" className="hidden h-full items-center md:flex">
-          {items.map((i) =>
+        <nav aria-label="Console navigation" className="hidden h-full items-center xl:flex">
+          {links.map((i) =>
             i.external ? (
               <a key={i.href} href={i.href} target="_blank" rel="noreferrer" className="k-tab">{i.label}</a>
             ) : (
@@ -54,21 +59,21 @@ export default function Navbar({ items = [] }: { items?: NavItem[] }) {
         {user && (
           <div className="flex items-center gap-3 border-l border-k-line pl-4">
             <div className="hidden text-right leading-tight sm:block">
-              <div className="text-sm font-medium text-k-hi">{user.name}</div>
+              <div className="max-w-[140px] truncate text-sm font-medium text-k-hi">{user.name}</div>
               <div className="text-2xs uppercase tracking-[0.08em] text-k-label">{user.role}</div>
             </div>
-            <button onClick={logout} title="Log out" className="rounded p-1.5 text-k-label hover:bg-k-panel hover:text-k-hi">
+            <button onClick={logout} title="Log out" aria-label="Log out" className="rounded p-1.5 text-k-label hover:bg-k-panel hover:text-k-hi">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         )}
       </div>
     </header>
-    {items.length > 0 && <nav aria-label="Mobile console navigation" className="flex shrink-0 overflow-x-auto border-b border-k-line bg-k-side px-2 md:hidden">
-      {items.map((i) => i.external
+    <nav aria-label="Mobile console navigation" className="sticky top-12 z-[990] flex shrink-0 overflow-x-auto border-b border-k-line bg-k-side px-2 xl:hidden">
+      {links.map((i) => i.external
         ? <a key={i.href} href={i.href} target="_blank" rel="noreferrer" className="k-tab shrink-0">{i.label}</a>
         : <Link key={i.href} href={i.href} className={`k-tab shrink-0 ${path === i.href ? "k-tab-active" : ""}`}>{i.label}</Link>)}
-    </nav>}
+    </nav>
     </>
   );
 }

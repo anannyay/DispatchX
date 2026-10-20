@@ -1,5 +1,10 @@
 # DispatchX: handoff for coding agents
 
+**Latest local verification (October 20, 2026):** see section 16 and
+`docs/SCALABILITY-PROGRESS.md`. Earlier sections are retained as historical context;
+section 16 updates the chaos authorization status and test counts. The exact current
+presentation flow is in `docs/DEMO-RUNBOOK.md` and `/demo`.
+
 Read this whole file before changing anything. It explains what exists, how it is wired,
 how to run and test it, how it deploys to AWS, and the traps already hit.
 
@@ -360,3 +365,35 @@ ServiceAccount can list pods/nodes/deployments/events and delete pods (Cluster V
 - Frontend `npm test` now runs 26 tests. `npm run test:delivery` uses a real local backend
   with separate role sessions, controlled geocoder/device coordinates, and an idle demo rider.
   Stop the simulator before running it. Never point this mutating test at a public deployment.
+
+## 16. Configurable demo and reliability follow-up
+
+- `/demo` generates finite simulator/seed commands only: Explain, Busy fleet and Failure/retry,
+  editable validated settings, persistent controls, clipboard fallback, eight-minute presenter flow.
+  Read `docs/DEMO-RUNBOOK.md` for exact click/say/observe steps and environment distinctions.
+- `/dispatch/system` reads staff-only `GET /api/admin/system` every 5 seconds after request
+  completion. Unknowns are not zeros; stale/offline/paused data stays labeled. History is capped
+  at 60 browser samples. The Celery ready list excludes scheduled/in-flight work and SQS.
+- Stop-task now requires admin plus explicit `ENABLE_CHAOS_TESTS` opt-in, default false.
+  This resolves the staff-only authorization gap described in section 14. Never enable it
+  while the seeded admin account is publicly accessible. Keep backend permission tests;
+  UI disabling alone is not a security boundary.
+- Optional `Idempotency-Key` on booking is durable/customer-scoped, with a unique constraint
+  from migration `0002` and the `BookingIdentity` model. Same payload replays 201; conflict
+  returns 409. The form's key survives unchanged retries while mounted, not reload. There
+  is still a DB-commit/event-publication gap; `services/booking.py` documents the boundary.
+- Dispatch/fleet Redis reads are batched. Lock release compares ownership tokens; offer cleanup
+  preserves newer pair reservations. Rider profile/current-read locks coordinate competing accepts
+  under MySQL REPEATABLE READ. Raw offer IDs and lease expiry retain documented race boundaries.
+- Verified: 106 backend tests (including actual Redis Lua), 46 frontend tests, typecheck/build,
+  46 fixture/public Chrome scenarios, real MySQL contention (20 keyed bookings → one order;
+  two same-rider accepts → one assignment), backend smoke and the real browser delivery flow.
+  The latter includes real System polling and all three role navbars at 320px.
+- `backend/tests/verify_mysql_concurrency.py --allow-local-mutations` is a separately invoked
+  local integration script, not a pytest case. It creates a fresh rider and cancels its test
+  orders; no public deployment targets. Reproduction commands and actual evidence are in
+  `docs/SCALABILITY-PROGRESS.md`.
+- The measured 500-rider direct fleet read improved from 71.440 to 9.191 ms median and
+  1,501 to 4 client round trips. Raw CSV and scope are documented; this is not system capacity.
+- No current AWS/kind rollout or failover was tested. Push only the feature branch/PR; merging
+  to main can deploy AWS. Keep `.DS_Store`, private env files and temporary preview files out of git.

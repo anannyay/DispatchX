@@ -29,6 +29,7 @@ async function main() {
   const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || "chrome", headless: true });
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+    context.setDefaultTimeout(10000);
     await context.route("**/*", async (route) => {
       const request = route.request(), url = new URL(request.url());
       if (!["GET", "HEAD"].includes(request.method())) { mutations.push(request.url()); return route.abort(); }
@@ -170,7 +171,7 @@ async function main() {
     });
     await page.close();
     const cluster = await context.newPage();
-    await cluster.addInitScript(() => localStorage.setItem("fp_auth", JSON.stringify({ user: { id: 2, name: "Browser fixture", role: "dispatcher" }, access_token: "fixture-only", refresh_token: "fixture-only" })));
+    await cluster.addInitScript(() => localStorage.setItem("fp_auth", JSON.stringify({ user: { id: 2, name: "Browser fixture", role: "admin" }, access_token: "fixture-only", refresh_token: "fixture-only" })));
     let mode = "error";
     const empty = { platform: "none", cluster: null, nodes: [], services: [], events: [] };
     const snapshot = {
@@ -181,7 +182,7 @@ async function main() {
     };
     await cluster.route("**/api/admin/infra", (route) => route.fulfill({
       status: mode === "error" ? 503 : 200, contentType: "application/json",
-      body: JSON.stringify(mode === "error" ? { detail: "Fixture unavailable" } : mode === "none" ? empty : mode === "platform-error" ? { ...empty, platform: "ecs", error: "Fixture permissions unavailable" } : snapshot),
+      body: JSON.stringify(mode === "error" ? { detail: "Fixture unavailable" } : mode === "none" ? empty : mode === "platform-error" ? { ...empty, platform: "ecs", error: "Fixture permissions unavailable" } : mode === "allowed" ? { ...snapshot, capabilities: { chaos_enabled: true, can_stop_tasks: true } } : snapshot),
     }));
     await check("cluster failures show unknown measurements; retry recognizes an unconfigured platform", async () => {
       await cluster.goto(`${base}/dispatch/cluster`);
@@ -199,6 +200,12 @@ async function main() {
       await cluster.getByRole("button").filter({ hasText: "task-fix" }).click();
       const chaos = cluster.getByRole("button", { name: /Chaos test: stop this task/ });
       await visible(chaos);
+      assert.ok(await chaos.isDisabled(), "missing capability is fail-closed even for an administrator");
+      mode = "allowed";
+      await cluster.reload();
+      await cluster.getByRole("button").filter({ hasText: "task-fix" }).click();
+      await visible(chaos);
+      assert.ok(await chaos.isEnabled(), "the permitted fixture is enabled before pause; never click it");
       await cluster.getByRole("button", { name: "Pause", exact: true }).click();
       assert.ok(await chaos.isDisabled());
       mode = "platform-error";
@@ -235,6 +242,169 @@ async function main() {
       await screenshot(operations, "dispatchx-operations-mobile-fixture");
       await operations.close();
     });
+    const demo = await context.newPage();
+    await check("demo presets generate bounded commands without executing them", async () => {
+      await demo.goto(`${base}/demo`);
+      await visible(demo.getByRole("heading", { name: "Explain the system. Show the evidence." }));
+      assert.match(await demo.getByRole("textbox", { name: "PowerShell simulator command", exact: true }).inputValue(), /--riders '5'.*--duration '300'/);
+      await demo.getByRole("combobox", { name: "Preset", exact: true }).selectOption("busy");
+      assert.match(await demo.getByRole("textbox", { name: "POSIX simulator command", exact: true }).inputValue(), /--riders '20'.*--orders-per-min '6'/);
+      await demo.getByRole("combobox", { name: "Preset", exact: true }).selectOption("failure");
+      assert.match(await demo.getByRole("textbox", { name: "POSIX simulator command", exact: true }).inputValue(), /--accept-rate '0'.*--duration '240'/);
+      assert.match(await demo.getByRole("textbox", { name: "Seed accounts · local Compose only", exact: true }).inputValue(), /--riders 3 --customers 5$/);
+      assert.equal(await demo.locator("#walkthrough ol > li").count(), 7);
+    });
+    await check("invalid demo settings keep copy controls visible but disabled; reset preserves target", async () => {
+      await demo.getByLabel("Simulator base URL", { exact: true }).fill("http://localhost:8000/demo-target");
+      await demo.getByLabel(/^Riders ·/).fill("101");
+      for (const name of ["Copy PowerShell", "Copy POSIX", "Copy seed command"]) {
+        const button = demo.getByRole("button", { name, exact: true });
+        await visible(button);
+        assert.ok(await button.isDisabled());
+      }
+      await demo.getByRole("button", { name: "Reset preset", exact: true }).click();
+      assert.equal(await demo.getByLabel(/^Riders ·/).inputValue(), "3");
+      assert.equal(await demo.getByLabel("Simulator base URL", { exact: true }).inputValue(), "http://localhost:8000/demo-target");
+      await demo.getByLabel("Simulator base URL", { exact: true }).fill("file:///not-a-server");
+      assert.ok(await demo.getByRole("button", { name: "Copy PowerShell", exact: true }).isDisabled());
+      await demo.getByLabel("Simulator base URL", { exact: true }).fill("http://localhost:8000");
+      assert.ok(await demo.getByRole("button", { name: "Copy PowerShell", exact: true }).isEnabled());
+    });
+    await check("demo clipboard refusal selects the persistent command; success copies exact text", async () => {
+      await demo.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: () => Promise.reject(new Error("Permission denied")) }));
+      await demo.getByRole("button", { name: "Copy PowerShell", exact: true }).click();
+      await visible(demo.getByRole("status").filter({ hasText: "Clipboard unavailable. Command selected" }));
+      const command = demo.getByRole("textbox", { name: "PowerShell simulator command", exact: true });
+      assert.ok(await command.evaluate((input) => document.activeElement === input && input.selectionStart === 0 && input.selectionEnd === input.value.length));
+      await demo.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: (value) => { window.copiedCommand = value; return Promise.resolve(); } }));
+      await demo.getByRole("button", { name: "Copy PowerShell", exact: true }).click();
+      await visible(demo.getByRole("status").filter({ hasText: "Copied. Paste into your terminal when ready." }));
+      assert.equal(await demo.evaluate(() => window.copiedCommand), await command.inputValue());
+    });
+    for (const width of [320, 390, 768, 1440]) {
+      await check(`demo ${width}px: configuration, copy, reset and presentation links remain reachable`, async () => {
+        await demo.setViewportSize({ width, height: 900 });
+        await noOverflow(demo);
+        for (const name of ["Reset preset", "Copy PowerShell", "Copy POSIX", "Copy seed command"]) {
+          const control = demo.getByRole("button", { name, exact: true });
+          await control.scrollIntoViewIfNeeded();
+          await visible(control);
+          const box = await control.boundingBox();
+          assert.ok(box.x >= -1 && box.x + box.width <= width + 1, `${name} fits viewport`);
+        }
+        await screenshot(demo, `dispatchx-demo-${width}`);
+      });
+    }
+    await demo.close();
+    const system = await context.newPage();
+    // The explorer's accelerated playback clock applies to the whole context.
+    // Align it with the fixture server before testing sample freshness.
+    await system.clock.setSystemTime(new Date());
+    await system.addInitScript(() => localStorage.setItem("fp_auth", JSON.stringify({ user: { id: 2, name: "Browser fixture", role: "dispatcher" }, access_token: "fixture-only", refresh_token: "fixture-only" })));
+    let systemMode = "hold", releaseSystem, activeRequests = 0, peakRequests = 0;
+    const systemSample = () => ({
+      sampled_at: new Date(Date.now() - (systemMode === "stale" ? 30000 : 0)).toISOString(),
+      status: systemMode === "degraded" ? "degraded" : "ok", platform: "none",
+      dependencies: { database: { status: "ok", latency_ms: 2 }, redis: { status: systemMode === "degraded" ? "error" : "ok", latency_ms: systemMode === "degraded" ? null : 1 } },
+      fleet: { online: 5, available: 4 }, orders: { pending: 13, unassigned: 1, active: 2, oldest_pending_age_seconds: 10 },
+      queue: { name: "celery", ready: systemMode === "degraded" ? null : 3, scope: "Default Celery ready list only; excludes scheduled/in-flight tasks and AWS SQS queues." },
+      dispatch: { offers_sent: 20, offers_accepted: 10, offers_rejected: 2, offers_expired: 1, assignment_p95_seconds: null, samples: 10 },
+      worker: { last_maintenance_at: null, age_seconds: null },
+      safeguards: { idempotent_booking: true, chaos_enabled: false, can_stop_tasks: false }, booking: { replays: 2, conflicts: 1 },
+      errors: systemMode === "degraded" ? ["Redis probe failed; queue measurement is unknown."] : [],
+    });
+    await system.route("**/api/admin/system", async (route) => {
+      activeRequests++;
+      peakRequests = Math.max(peakRequests, activeRequests);
+      try {
+        if (systemMode === "hold") await new Promise((resolve) => { releaseSystem = resolve; });
+        await route.fulfill({ status: systemMode === "error" ? 503 : 200, contentType: "application/json", body: JSON.stringify(systemMode === "error" ? { detail: "Fixture temporarily unavailable" } : systemSample()) });
+      } finally { activeRequests--; }
+    });
+    await check("system loading exposes unknowns and persistent pause/retry controls", async () => {
+      await system.goto(`${base}/dispatch/system`);
+      await visible(system.getByRole("heading", { name: "Live application signals", exact: true }));
+      await visible(system.getByText("Application health unknown", { exact: true }));
+      await visible(system.getByRole("button", { name: "Pause automatic updates", exact: true }));
+      assert.ok(await system.getByRole("button", { name: "Retry now", exact: true }).isDisabled());
+      assert.match(await system.locator(".system-metrics").innerText(), /Unknown/);
+      await system.waitForFunction(() => document.body.textContent.includes("Request in progress"));
+      assert.equal(activeRequests, 1);
+      systemMode = "valid";
+      releaseSystem();
+      await visible(system.getByText("Sample reports: OK", { exact: true }));
+      await visible(system.getByText("1 / 60 samples", { exact: true }));
+      await system.getByText("Inspect sample values", { exact: true }).click();
+      assert.match(await system.getByRole("table").innerText(), /13/);
+    });
+    await check("system pause, failed refresh and retry retain the previous measurements", async () => {
+      await system.getByRole("button", { name: "Pause automatic updates", exact: true }).click();
+      await visible(system.getByRole("status").filter({ hasText: /^Paused$/ }));
+      await visible(system.getByRole("button", { name: "Retry & resume", exact: true }));
+      systemMode = "error";
+      await system.getByRole("button", { name: "Retry & resume", exact: true }).click();
+      await visible(system.getByRole("status").filter({ hasText: /^Refresh failed$/ }));
+      assert.match(await system.locator(".system-metrics").innerText(), /13/);
+      await visible(system.getByRole("status").filter({ hasText: "Displayed values belong to the last successful sample" }));
+      assert.ok(await system.getByRole("button", { name: "Retry now", exact: true }).isEnabled());
+      systemMode = "degraded";
+      await system.getByRole("button", { name: "Retry now", exact: true }).click();
+      await visible(system.getByRole("heading", { name: "Application reported degraded signals", exact: true }));
+      assert.match(await system.locator(".system-metrics").innerText(), /Queue ready\s*Unknown/i);
+      await system.getByText("Reported issues (1)", { exact: true }).click();
+      await visible(system.getByText("Redis probe failed; queue measurement is unknown.", { exact: true }));
+    });
+    await check("system stale and offline states do not claim fresh health or hide controls", async () => {
+      systemMode = "stale";
+      await system.getByRole("button", { name: "Retry now", exact: true }).click();
+      await visible(system.getByRole("status").filter({ hasText: /^Stale sample$/ }));
+      await visible(system.getByText("Last sample: OK", { exact: true }));
+      await context.setOffline(true);
+      await visible(system.getByRole("status").filter({ hasText: /^Offline$/ }));
+      assert.ok(await system.getByRole("button", { name: "Retry now", exact: true }).isDisabled());
+      await visible(system.getByRole("button", { name: "Pause automatic updates", exact: true }));
+      systemMode = "valid";
+      await context.setOffline(false);
+      await visible(system.getByText("Sample reports: OK", { exact: true }));
+    });
+    await check("system pause/resume drains a slow request instead of overlapping polls", async () => {
+      systemMode = "hold";
+      await system.getByRole("button", { name: "Retry now", exact: true }).click();
+      await system.waitForFunction(() => document.body.textContent.includes("Request in progress"));
+      assert.equal(activeRequests, 1);
+      for (let i = 0; i < 2; i++) {
+        await system.getByRole("button", { name: "Pause automatic updates", exact: true }).click();
+        await system.getByRole("button", { name: "Resume automatic updates", exact: true }).click();
+      }
+      assert.equal(activeRequests, 1);
+      systemMode = "valid";
+      releaseSystem();
+      await system.getByRole("button", { name: "Retry now", exact: true }).waitFor({ state: "visible" });
+      await system.waitForFunction(() => ![...document.querySelectorAll("button")].find((button) => button.textContent === "Retry now")?.disabled);
+      assert.equal(peakRequests, 1);
+    });
+    for (const width of [320, 390, 768, 1440]) {
+      await check(`system ${width}px: every console destination remains reachable without page overflow`, async () => {
+        await system.setViewportSize({ width, height: 900 });
+        await noOverflow(system);
+        const nav = system.getByRole("navigation", { name: width < 1280 ? "Mobile console navigation" : "Console navigation", exact: true });
+        for (const name of ["Operations", "System signals", "Live cluster", "Demo guide", "Cloud explorer"]) {
+          const link = nav.getByRole("link", { name, exact: true });
+          await link.scrollIntoViewIfNeeded();
+          await visible(link);
+          const box = await link.boundingBox();
+          assert.ok(box.x >= -1 && box.x + box.width <= width + 1, `${name} fits viewport`);
+        }
+        await screenshot(system, `dispatchx-system-${width}`);
+      });
+    }
+    await check("console demo navigation opens the guide and its architecture link", async () => {
+      await system.getByRole("navigation", { name: "Console navigation", exact: true }).getByRole("link", { name: "Demo guide", exact: true }).click();
+      await visible(system.getByRole("heading", { name: "Explain the system. Show the evidence." }));
+      await system.getByRole("navigation", { name: "Demo navigation", exact: true }).getByRole("link", { name: "Architecture", exact: true }).click();
+      await visible(system.getByRole("link", { name: "Demo guide", exact: true }));
+    });
+    await system.close();
     await check("no JavaScript page errors or mutation requests during exploration", async () => {
       assert.deepEqual(errors, []);
       assert.deepEqual(mutations, []);

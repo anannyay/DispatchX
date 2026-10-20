@@ -50,6 +50,7 @@ async function main() {
       await customer.getByRole("button", { name: /Book delivery/ }).click();
       const created = await response;
       assert.ok(created.ok(), "booking must succeed against the real API");
+      assert.match(created.request().headers()["idempotency-key"], /^[A-Za-z0-9._:-]{8,128}$/, "the actual booking carries its retry identity");
       const order = await created.json();
       await customer.waitForURL(`**/customer/orders/${order.id}`);
       return order.id;
@@ -108,6 +109,31 @@ async function main() {
     assert.equal((await api(customer, `/orders/${cancelled}`)).body.status, "cancelled");
     assert.equal((await api(customer, "/admin/infra")).status, 403, "customer cannot inspect staff infrastructure");
     console.log("PASS cancellation persists and customer access to staff infrastructure is rejected");
+
+    await dispatch.goto(`${base}/dispatch/system`);
+    await visible(dispatch.getByText("Sample reports: OK", { exact: true }));
+    await visible(dispatch.getByText("2 / 60 samples", { exact: true }));
+    const signals = await api(dispatch, "/admin/system");
+    assert.equal(signals.status, 200);
+    assert.equal(signals.body.dependencies.database.status, "ok");
+    assert.equal(signals.body.dependencies.redis.status, "ok");
+    assert.equal(signals.body.safeguards.idempotent_booking, true);
+    assert.equal(signals.body.safeguards.can_stop_tasks, false);
+    await dispatch.getByRole("button", { name: "Pause automatic updates", exact: true }).click();
+    await visible(dispatch.getByRole("status").filter({ hasText: /^Paused$/ }));
+    console.log("PASS real System signals poll MySQL/Redis and pause without discarding the sample");
+
+    for (const page of [customer, rider, dispatch]) {
+      await page.setViewportSize({ width: 320, height: 900 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "real role console fits a 320px viewport");
+      const nav = page.getByRole("navigation", { name: "Mobile console navigation", exact: true });
+      const guide = nav.getByRole("link", { name: "Demo guide", exact: true });
+      await guide.scrollIntoViewIfNeeded();
+      await visible(guide);
+      assert.equal(await guide.getAttribute("href"), "/demo");
+      await visible(page.getByRole("button", { name: "Log out", exact: true }));
+    }
+    console.log("PASS customer, rider and dispatcher preserve mobile demo navigation and logout controls");
     assert.deepEqual(errors, [], "no uncaught JavaScript errors in the three consoles");
     console.log("REAL BROWSER DELIVERY PASSED (local backend; address lookup and device coordinates are controlled)");
   } finally {

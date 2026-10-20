@@ -209,9 +209,11 @@ export default function CloudExplorer() {
           <Link href="/" className="explorer-nav-link">Overview</Link>
           <span className="explorer-nav-link is-current" aria-current="page">Cloud explorer</span>
         </nav>
+        <div className="explorer-header-actions"><Link href="/demo" className="explorer-console-link">Demo guide</Link>
         <Link href={staff ? "/dispatch/cluster" : demo} className="explorer-console-link">
           <Radio size={13} /> {staff ? "Live cluster" : user ? "My console" : "Open demo"} <ArrowRight size={13} />
         </Link>
+        </div>
       </header>
 
       <main className="explorer-shell">
