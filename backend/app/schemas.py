@@ -111,3 +111,12 @@ class PodUploadIn(BaseModel):
 
 class AssignIn(BaseModel):
     rider_id: int
+
+
+class SimStartIn(BaseModel):
+    riders: int = Field(30, ge=1, le=100)
+    orders_per_min: float = Field(6, ge=0, le=30)
+    accept_rate: float = Field(0.85, ge=0, le=1)
+    duration_s: int = Field(300, ge=60, le=900)
+    speedup: float = Field(8, ge=1, le=20)
+    radius_km: float = Field(5, ge=1, le=10)

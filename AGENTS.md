@@ -188,6 +188,15 @@ cd backend && export DATABASE_URL=sqlite:////tmp/dx.db
 ../.venv/bin/celery -A app.workers.celery_app worker -P threads --concurrency=8 &
 cd ../frontend && cp .env.example .env.local && npm ci && npm run build && npx next start -p 3000
 ```
+**Simulate traffic from the UI:** the dispatcher Operations page has a *Simulate traffic* button
+(`frontend/src/components/SimulatorControl.tsx`) that calls `/api/admin/simulator{,/start,/stop}`
+(staff only). `backend/app/services/simulation.py` runs the same virtual riders/customers as
+`simulator/simulator.py` as an asyncio task inside the API process that got the request, talking to
+itself over `SIMULATOR_BASE_URL` (default `http://127.0.0.1:8000`). Redis keys `sim:lock` (owner +
+30 s heartbeat), `sim:stop` and `sim:status` let any replica start/stop/report. Max 100 riders,
+30 orders/min, 15 min. Stopping finishes in-hand deliveries and takes riders offline. Needs the
+seeded `rider{N}@sim` / `customer{1..20}@sim` accounts.
+
 Without a Celery worker nothing gets dispatched (orders pile up, `offers=0`). That is the first thing
 to check when "nothing happens".
 

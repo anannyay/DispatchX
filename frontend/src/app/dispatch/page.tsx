@@ -6,6 +6,7 @@ import { AlertTriangle, ChevronDown, ExternalLink, RotateCcw, SlidersHorizontal,
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import RequireRole from "@/components/RequireRole";
+import SimulatorControl from "@/components/SimulatorControl";
 import { Button, KV, Metric, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 import { haversineKm, inr, parseUtc, timeAgo } from "@/lib/format";
@@ -182,6 +183,7 @@ function ControlRoom() {
           <SlidersHorizontal size={14} /> {moreMetrics ? "Fewer metrics" : "More metrics"}
           {(s?.sla_breaches_active ?? 0) > 0 && <span className="text-k-err">{s?.sla_breaches_active} SLA alerts</span>}
         </button>
+        <SimulatorControl />
       </div>
       <div id="secondary-metrics" hidden={!moreMetrics} className={`${moreMetrics ? "grid" : "hidden"} shrink-0 grid-cols-1 divide-y divide-k-line border-b border-k-line bg-k-side sm:grid-cols-3 sm:divide-x sm:divide-y-0 [&>div>div]:whitespace-normal [&>div>div]:break-words [&>div>div]:overflow-visible`}>
         <Metric label="Revenue 24h" value={s ? inr(s.revenue_24h) : "–"} />

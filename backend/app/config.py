@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     public_api_url: str = "http://localhost:8000"
     # Explicit opt-in AND admin role are required; public demos remain read-only.
     enable_chaos_tests: bool = False
+    # In-cluster traffic simulator targets the API process it runs in
+    simulator_base_url: str = "http://127.0.0.1:8000"
 
     # Dispatch tuning
     dispatch_radii_km: str = "3,6,12,25"

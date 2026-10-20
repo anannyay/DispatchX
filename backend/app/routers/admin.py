@@ -12,8 +12,8 @@ from app.db import get_db
 from app.deps import require_staff
 from app.models import Order, OrderStatus, Role, User, utcnow
 from app.redis_client import AVAILABLE, ONLINE, metric, order_offer, order_tried, r, rider_offer, rider_state
-from app.schemas import AssignIn
-from app.services import infra
+from app.schemas import AssignIn, SimStartIn
+from app.services import infra, simulation
 from app.services.operations import system_snapshot
 from app.services.dispatch import OfferError, accept_offer, release_rider
 from app.services.orders import InvalidTransition, serialize, transition
@@ -94,6 +94,24 @@ def riders(_: User = Depends(require_staff), db: Session = Depends(get_db)):
 def system(user: User = Depends(require_staff), db: Session = Depends(get_db)):
     """Application signals, not live autoscaler telemetry or an SLO assertion."""
     return system_snapshot(db, r, user)
+
+
+@router.get("/simulator")
+async def simulator_status(_: User = Depends(require_staff)):
+    return await simulation.status()
+
+
+@router.post("/simulator/start")
+async def simulator_start(body: SimStartIn, user: User = Depends(require_staff)):
+    try:
+        return await simulation.start(simulation.SimParams(**body.model_dump()), user.email)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.post("/simulator/stop")
+async def simulator_stop(_: User = Depends(require_staff)):
+    return await simulation.stop()
 
 
 @router.post("/orders/{order_id}/redispatch")
