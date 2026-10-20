@@ -9,3 +9,4 @@ node_modules/
 infra/out/
 frontend/.env.local
 dump.rdb
+*.tsbuildinfo
