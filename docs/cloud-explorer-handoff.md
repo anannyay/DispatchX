@@ -5,6 +5,10 @@ This document records local implementation and verification; consult the branch/
 publication status. **No AWS deployment was performed during this work.** The older AWS/CI
 status in `AGENTS.md` is historical; it was not reverified in this session.
 
+**Later follow-up:** [local-demo-handoff.md](local-demo-handoff.md) records the real
+MySQL/Redis delivery and three-console browser verification, plus subsequent functional fixes.
+The checks below describe the initial explorer pass, not the newer complete local-demo run.
+
 ## Goal and result
 
 Make this a clear cloud-computing demonstration, not a wall of dashboards.

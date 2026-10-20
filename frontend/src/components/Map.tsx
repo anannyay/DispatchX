@@ -78,8 +78,8 @@ function Fit({ points, fitKey }: { points?: [number, number][]; fitKey?: string 
   const map = useMap();
   useEffect(() => {
     if (!points || points.length === 0) return;
-    if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 14));
-    else map.fitBounds(L.latLngBounds(points), { padding: [60, 60], maxZoom: 15 });
+    if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 14), { animate: false });
+    else map.fitBounds(L.latLngBounds(points), { padding: [60, 60], maxZoom: 15, animate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, map]);
   return null;
@@ -107,7 +107,9 @@ export default function Map({
   // (CARTO's raster tiles now require an API key outside localhost)
   void dark;
   return (
-    <MapContainer center={center} zoom={zoom} className={className ?? "h-full w-full"} zoomControl={false}>
+    // Leaflet 1.9.4 can finish a zoom after route unmount (Leaflet issue #9575).
+    // Avoid that deferred transition without changing the pinned map dependencies.
+    <MapContainer center={center} zoom={zoom} className={className ?? "h-full w-full"} zoomControl={false} zoomAnimation={false}>
       <TileLayer
         url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
         maxNativeZoom={16}

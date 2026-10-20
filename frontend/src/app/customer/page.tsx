@@ -26,13 +26,26 @@ function CustomerHome() {
   const [editing, setEditing] = useState<Which>("pickup");
   const [note, setNote] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+  const [quoteAttempt, setQuoteAttempt] = useState(0);
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
+  const [ordersAttempt, setOrdersAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Order[]>("/orders?limit=30").then(setOrders).catch(() => setOrders([]));
-  }, []);
+    let current = true;
+    setOrdersLoading(true);
+    setOrdersError("");
+    api<Order[]>("/orders?limit=30")
+      .then((next) => { if (current) setOrders(next); })
+      .catch((e) => { if (current) setOrdersError(e instanceof Error && e.message ? e.message : "Please try again."); })
+      .finally(() => { if (current) setOrdersLoading(false); });
+    return () => { current = false; };
+  }, [ordersAttempt]);
 
   const onUpdate = useCallback((o: Order) => {
     setOrders((prev) => {
@@ -47,13 +60,24 @@ function CustomerHome() {
   useSocketEvent<Order>("order:update", onUpdate);
 
   useEffect(() => {
+    let current = true;
     setQuote(null);
+    setQuoteError("");
+    setQuoteLoading(!!pickup && !!drop);
     if (!pickup || !drop) return;
     api<Quote>("/orders/quote", {
       method: "POST",
       body: { pickup: { address: pickup.label, lat: pickup.lat, lng: pickup.lng }, drop: { address: drop.label, lat: drop.lat, lng: drop.lng } },
-    }).then(setQuote).catch(() => setQuote(null));
-  }, [pickup, drop]);
+    })
+      .then((next) => { if (current) setQuote(next); })
+      .catch((e) => {
+        if (!current) return;
+        setQuote(null);
+        setQuoteError(e instanceof Error && e.message ? e.message : "Please try again.");
+      })
+      .finally(() => { if (current) setQuoteLoading(false); });
+    return () => { current = false; };
+  }, [pickup, drop, quoteAttempt]);
 
   async function onMapClick(lat: number, lng: number) {
     const which = editing;
@@ -61,7 +85,7 @@ function CustomerHome() {
     (which === "pickup" ? setPickup : setDrop)(temp);
     if (which === "pickup") setEditing("drop");
     const label = await reverseGeocode(lat, lng);
-    (which === "pickup" ? setPickup : setDrop)((p) => (p && p.lat === lat ? { ...p, label } : p));
+    (which === "pickup" ? setPickup : setDrop)((p) => (p === temp ? { ...p, label } : p));
   }
 
   async function placeOrder() {
@@ -116,6 +140,13 @@ function CustomerHome() {
                 </div>
               ))}
             </div>
+            {quoteLoading && <div role="status" className="flex items-center gap-2 text-xs text-k-label"><Spinner /> Calculating quote…</div>}
+            {quoteError && (
+              <div role="alert" className="space-y-2 rounded border border-k-line bg-k-panel p-3">
+                <p className="text-xs text-k-err">Could not calculate quote. {quoteError}</p>
+                <Button variant="secondary" size="sm" onClick={() => setQuoteAttempt((n) => n + 1)} disabled={quoteLoading}>Retry quote</Button>
+              </div>
+            )}
             {error && <p className="text-xs text-k-err">{error}</p>}
             <Button onClick={placeOrder} disabled={!pickup || !drop || busy} size="lg" className="w-full">
               {busy ? <Spinner /> : <>Book delivery{quote ? ` · ${inr(quote.price)}` : ""}<ArrowRight className="h-4 w-4" /></>}
@@ -124,7 +155,15 @@ function CustomerHome() {
 
           <section className="p-4">
             <div className="k-label mb-2">Active</div>
-            {orders === null ? <Spinner className="h-4 w-4 text-k-label" /> : active.length === 0 ? (
+            {ordersLoading ? (
+              <div role="status" className="flex items-center gap-2 text-xs text-k-label"><Spinner /> Loading deliveries…</div>
+            ) : ordersError ? (
+              <div role="alert" className="space-y-2 rounded border border-k-line bg-k-panel p-3">
+                <p className="text-sm text-k-hi">Could not load deliveries</p>
+                <p className="text-xs text-k-err">{ordersError}</p>
+                <Button variant="secondary" size="sm" onClick={() => setOrdersAttempt((n) => n + 1)}>Retry deliveries</Button>
+              </div>
+            ) : active.length === 0 ? (
               <Empty title="No active deliveries">Booked orders appear here with live status.</Empty>
             ) : (
               <div className="overflow-hidden rounded border border-k-line">{active.map((o) => <OrderRow key={o.id} o={o} />)}</div>

@@ -347,3 +347,16 @@ ServiceAccount can list pods/nodes/deployments/events and delete pods (Cluster V
 - The existing staff-accessible stop-task endpoint remains a public-demo risk. Address its
   backend authorization before deploying this presentation publicly; stale-button disabling
   is not a security boundary.
+
+## 15. Functional console verification follow-up
+
+- `docs/local-demo-handoff.md` records subsequent October 20, 2026 real-stack validation.
+  MySQL/Redis/Celery delivery smoke and the three-role browser lifecycle passed locally;
+  AWS deployment/failover still has not been verified in this work.
+- Compose now gates MySQL on an authenticated TCP query, then gates worker/Beat/web on
+  API readiness after migrations. Keep these dependencies acyclic.
+- Customer/rider retry states, quote/offer races, device-GPS fallback and Leaflet route
+  transition errors have focused fixes and regression coverage.
+- Frontend `npm test` now runs 26 tests. `npm run test:delivery` uses a real local backend
+  with separate role sessions, controlled geocoder/device coordinates, and an idle demo rider.
+  Stop the simulator before running it. Never point this mutating test at a public deployment.

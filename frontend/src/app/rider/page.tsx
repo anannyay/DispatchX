@@ -28,9 +28,14 @@ const DRIVE_KMH = 120; // demo auto-drive is sped up so a trip takes ~1 minute
 
 function RiderApp() {
   const [me, setMe] = useState<RiderMe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const refreshRequest = useRef(0);
+  const offerVersion = useRef(0);
   const [pos, setPos] = useState<[number, number]>(CITY_CENTER);
   const [heading, setHeading] = useState(0);
   const [mode, setMode] = useState<PosMode>("demo");
+  const [gpsLoading, setGpsLoading] = useState(false);
   const [autoDrive, setAutoDrive] = useState(false);
   const [offer, setOffer] = useState<Offer | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -41,16 +46,28 @@ function RiderApp() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
-    const m = await api<RiderMe>("/riders/me");
-    setMe(m);
-    if (m.offer) setOffer(m.offer);
-    return m;
+    const request = ++refreshRequest.current;
+    const version = offerVersion.current;
+    setLoading(true);
+    setLoadError("");
+    try {
+      const m = await api<RiderMe>("/riders/me");
+      if (request !== refreshRequest.current) return;
+      setMe(m);
+      // A newer socket event takes precedence over this request's offer snapshot.
+      if (version === offerVersion.current) setOffer(m.offer ?? null);
+    } catch (e) {
+      if (request === refreshRequest.current) setLoadError(e instanceof Error && e.message ? e.message : "Please try again.");
+    } finally {
+      if (request === refreshRequest.current) setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     // Start somewhere plausible near the city centre
     setPos([CITY_CENTER[0] + (Math.random() - 0.5) * 0.04, CITY_CENTER[1] + (Math.random() - 0.5) * 0.04]);
-    refresh().catch(() => {});
+    void refresh();
+    return () => { refreshRequest.current++; };
   }, [refresh]);
 
   const job = me?.active_order ?? null;
@@ -71,16 +88,34 @@ function RiderApp() {
 
   // Real device GPS
   useEffect(() => {
-    if (mode !== "gps" || !navigator.geolocation) return;
-    const w = navigator.geolocation.watchPosition(
+    setGpsLoading(mode === "gps");
+    if (mode !== "gps") return;
+    let current = true;
+    const fallback = (message: string) => {
+      if (!current) return;
+      current = false;
+      setGpsLoading(false);
+      setMode("demo");
+      setMsg(message);
+    };
+    const geolocation = navigator.geolocation;
+    if (!geolocation) {
+      fallback("Device GPS is not supported, switched to demo mode");
+      return;
+    }
+    const w = geolocation.watchPosition(
       (p) => {
+        if (!current) return;
+        setGpsLoading(false);
         setPos([p.coords.latitude, p.coords.longitude]);
-        if (p.coords.heading) setHeading(p.coords.heading);
+        if (p.coords.heading !== null) setHeading(p.coords.heading);
       },
-      () => setMsg("Location permission denied, switched to demo mode"),
-      { enableHighAccuracy: true },
+      (e) => fallback(e.code === 1
+        ? "Location permission denied, switched to demo mode"
+        : "Device location unavailable, switched to demo mode"),
+      { enableHighAccuracy: true, timeout: 10000 },
     );
-    return () => navigator.geolocation.clearWatch(w);
+    return () => { current = false; geolocation.clearWatch(w); };
   }, [mode]);
 
   // Demo auto-drive towards the current target
@@ -100,12 +135,15 @@ function RiderApp() {
   }, [autoDrive, target?.[0], target?.[1], mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useSocketEvent<Offer>("job:offer", useCallback((o: Offer) => {
+    offerVersion.current++;
     setOffer(o);
   }, []));
   useSocketEvent<{ order_id: number }>("job:offer_closed", useCallback((d: { order_id: number }) => {
+    offerVersion.current++;
     setOffer((o) => (o && o.order.id === d.order_id ? null : o));
   }, []));
   useSocketEvent<Order>("order:update", useCallback((o: Order) => {
+    offerVersion.current++;
     setMe((m) => {
       if (!m) return m;
       if (m.active_order?.id === o.id) {
@@ -124,7 +162,10 @@ function RiderApp() {
     const tick = () => {
       const s = Math.max(0, Math.round((deadline - Date.now()) / 1000));
       setSecondsLeft(s);
-      if (s === 0) setOffer(null);
+      if (s === 0) {
+        offerVersion.current++;
+        setOffer(null);
+      }
     };
     tick();
     const t = setInterval(tick, 250);
@@ -208,7 +249,22 @@ function RiderApp() {
   const distToTarget = target ? haversineKm(pos, target) : null;
   const arrived = distToTarget !== null && distToTarget < 0.15;
 
-  if (!me) return <div className="grid h-screen place-items-center text-k-label"><Spinner className="h-5 w-5" /></div>;
+  if (!me) return (
+    <div className="flex h-screen flex-col bg-k-canvas">
+      <Navbar />
+      <main className="grid flex-1 place-items-center p-4">
+        {loading ? (
+          <div role="status" className="flex items-center gap-2 text-sm text-k-label"><Spinner className="h-5 w-5" /> Loading rider console…</div>
+        ) : (
+          <div role="alert" className="w-full max-w-sm space-y-3 rounded border border-k-line bg-k-side p-4">
+            <h1 className="text-base font-semibold text-k-hi">Rider console unavailable</h1>
+            <p className="text-sm text-k-err">{loadError}</p>
+            <Button variant="secondary" onClick={refresh}>Retry</Button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 
   const earning = (o: Order) => inr(o.price * 0.8);
 
@@ -225,7 +281,7 @@ function RiderApp() {
                 {me.online ? (job ? "On delivery" : "Online, accepting jobs") : "Offline"}
               </div>
             </div>
-            <button onClick={toggleOnline} disabled={busy || (me.online && !!job)} aria-label="Toggle online"
+            <button onClick={toggleOnline} disabled={busy || loading || (me.online && !!job)} aria-label="Toggle online"
               className={`relative h-6 w-11 rounded-full transition disabled:opacity-40 ${me.online ? "bg-k-go" : "bg-k-hover"}`}>
               <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${me.online ? "left-[22px]" : "left-0.5"}`} />
             </button>
@@ -240,7 +296,14 @@ function RiderApp() {
             ))}
           </div>
 
-          {msg && <div className="border-b border-k-line bg-k-accent/[0.07] px-4 py-2.5 text-sm text-k-hi">{msg}</div>}
+          {loading && <div role="status" className="flex items-center gap-2 border-b border-k-line px-4 py-2.5 text-xs text-k-label"><Spinner /> Refreshing rider details…</div>}
+          {loadError && (
+            <div role="alert" className="space-y-2 border-b border-k-line bg-k-panel px-4 py-3">
+              <p className="text-xs text-k-err">Could not refresh rider details. {loadError}</p>
+              <Button variant="secondary" size="sm" onClick={refresh} disabled={busy || loading}>Retry</Button>
+            </div>
+          )}
+          {msg && <div role="status" className="border-b border-k-line bg-k-accent/[0.07] px-4 py-2.5 text-sm text-k-hi">{msg}</div>}
 
           {job ? (
             <div className="space-y-3 border-b border-k-line p-4">
@@ -269,15 +332,15 @@ function RiderApp() {
                 </Button>
               )}
               {job.status === "assigned" ? (
-                <Button size="lg" className="w-full" disabled={busy} onClick={pickup}><Check className="h-4 w-4" /> Confirm pickup</Button>
+                <Button size="lg" className="w-full" disabled={busy || loading} onClick={pickup}><Check className="h-4 w-4" /> Confirm pickup</Button>
               ) : (
                 <>
                   <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={(e) => e.target.files?.[0] && deliver(e.target.files[0])} />
-                  <Button size="lg" className="w-full" disabled={busy} onClick={() => fileRef.current?.click()}>
+                  <Button size="lg" className="w-full" disabled={busy || loading} onClick={() => fileRef.current?.click()}>
                     {busy ? <Spinner /> : <><Camera className="h-4 w-4" /> Photo &amp; complete delivery</>}
                   </Button>
-                  <button className="w-full text-xs text-k-label hover:text-k-hi" disabled={busy} onClick={() => deliver()}>Complete without photo</button>
+                  <button className="w-full text-xs text-k-label hover:text-k-hi" disabled={busy || loading} onClick={() => deliver()}>Complete without photo</button>
                 </>
               )}
             </div>
@@ -289,12 +352,13 @@ function RiderApp() {
             <div className="k-label mb-2">Location source</div>
             <div className="grid grid-cols-2 rounded bg-k-panel p-0.5">
               {(["demo", "gps"] as const).map((m) => (
-                <button key={m} onClick={() => setMode(m)}
+                <button key={m} onClick={() => { setMsg(""); setMode(m); }} aria-pressed={mode === m}
                   className={`flex items-center justify-center gap-1.5 rounded-[2px] py-1.5 text-xs font-semibold ${mode === m ? "bg-k-hover text-k-hi" : "text-k-label hover:text-k-text"}`}>
                   {m === "demo" ? "Demo (click map)" : <><Crosshair className="h-3 w-3" /> Device GPS</>}
                 </button>
               ))}
             </div>
+            {gpsLoading && <div role="status" className="mt-2 flex items-center gap-2 text-xs text-k-label"><Spinner /> Waiting for device location…</div>}
             {mode === "demo" && <p className="mt-2 text-xs text-k-label">Click anywhere on the map to move.</p>}
           </div>
         </aside>
@@ -337,8 +401,8 @@ function RiderApp() {
                 <li className="flex gap-2.5 text-k-hi"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-k-err" />{offer.order.drop_address}</li>
               </ol>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" size="lg" disabled={busy} onClick={reject}>Decline</Button>
-                <Button size="lg" disabled={busy} onClick={accept}>Accept</Button>
+                <Button variant="secondary" size="lg" disabled={busy || loading} onClick={reject}>Decline</Button>
+                <Button size="lg" disabled={busy || loading} onClick={accept}>Accept</Button>
               </div>
             </div>
           </div>

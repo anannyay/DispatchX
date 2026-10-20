@@ -19,6 +19,9 @@ can inspect actual platform snapshots under `/dispatch/cluster` when a stack is 
 See [the explorer handoff](docs/cloud-explorer-handoff.md) for the presentation sequence,
 frontend-only preview, verification commands and known limitations.
 
+The [local delivery demo handoff](docs/local-demo-handoff.md) covers the verified three-role
+browser journey, console reliability fixes, safe test setup and finite fleet simulation.
+
 ## Repository layout
 
 ```
