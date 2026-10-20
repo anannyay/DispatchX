@@ -23,6 +23,7 @@ BACKEND_ENV = """Environment:
   - { Name: CELERY_POOL, Value: threads }
   - { Name: ECS_CLUSTER, Value: !Sub "${Project}-cluster" }
   - { Name: CELERY_CONCURRENCY, Value: "8" }
+  - { Name: ENABLE_CHAOS_TESTS, Value: "true" }
 Secrets:
   - { Name: DB_USER, ValueFrom: !Sub "${DbSecretArn}:username::" }
   - { Name: DB_PASSWORD, ValueFrom: !Sub "${DbSecretArn}:password::" }
