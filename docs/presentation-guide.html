@@ -1,0 +1,374 @@
+<title>DispatchX Presentation Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: sticky table of contents on the left, one reading column on the right; stacks on phones. */
+:root {
+  --bg: #f7f8fa; --surface: #ffffff; --ink: #18202b; --muted: #5b6676; --line: #dde2e9;
+  --accent: #0b8aa3; --accent-soft: #e3f4f7; --warn: #a36a00; --warn-soft: #fff4dc; --ok: #13804f;
+  --code-bg: #eef1f5;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191f; --surface: #1c2129; --ink: #e8ecf1; --muted: #9aa5b4; --line: #2d3540;
+  --accent: #3cc4dc; --accent-soft: #15333b; --warn: #f0b429; --warn-soft: #3a2f14; --ok: #3ccf8e; --code-bg: #232a34; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15191f; --surface: #1c2129; --ink: #e8ecf1; --muted: #9aa5b4; --line: #2d3540;
+  --accent: #3cc4dc; --accent-soft: #15333b; --warn: #f0b429; --warn-soft: #3a2f14; --ok: #3ccf8e; --code-bg: #232a34; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.65 var(--f-body); }
+.wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px; max-width: 1180px; margin: 0 auto;
+  padding-block: 32px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; font-size: 13px; }
+nav.toc .brand { font: 700 18px/1.2 var(--f-display); letter-spacing: .01em; margin-bottom: 4px; }
+nav.toc .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 5px 0 5px 12px; border-left: 2px solid var(--line); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--ink); border-left-color: var(--accent); outline: none; }
+main { min-width: 0; }
+header.hero { border-bottom: 1px solid var(--line); padding-bottom: 28px; margin-bottom: 8px; }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 44px/1.05 var(--f-display); margin: 12px 0 14px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 700 28px/1.15 var(--f-display); margin: 56px 0 14px; padding-top: 8px; text-wrap: balance; scroll-margin-top: 24px; }
+h3 { font: 600 17px/1.3 var(--f-body); margin: 28px 0 8px; }
+p, li { max-width: 72ch; }
+p { margin: 0 0 14px; }
+.lede { font-size: 17px; color: var(--muted); max-width: 64ch; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+pre.cmd { background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; overflow-x: auto; font: 13px/1.6 var(--f-mono); margin: 8px 0 16px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin: 20px 0 0; }
+.facts div { background: var(--surface); padding: 12px 14px; }
+.facts dt { font: 500 11px/1.2 var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.facts dd { margin: 4px 0 0; font-weight: 600; font-size: 14px; word-break: break-word; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 4px 4px 0; margin: 14px 0; max-width: 76ch; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note b { font-weight: 600; }
+.tbl { overflow-x: auto; margin: 10px 0 18px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 11px/1.3 var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.step { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.step .t { font: 500 13px/1.4 var(--f-mono); color: var(--accent); padding-top: 2px; }
+.step h4 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.step p, .step ul { margin: 0 0 6px; }
+.say { font-style: italic; color: var(--muted); }
+.say::before { content: "Say: "; font-style: normal; font-weight: 600; color: var(--ink); }
+.console { counter-reset: c; list-style: none; padding: 0; margin: 10px 0; }
+.console > li { counter-increment: c; position: relative; padding: 12px 0 12px 44px; border-bottom: 1px solid var(--line); max-width: none; }
+.console > li::before { content: counter(c); position: absolute; left: 0; top: 12px; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font: 600 13px/25px var(--f-mono); text-align: center; }
+.console .where { font: 500 12.5px/1.5 var(--f-mono); color: var(--muted); display: block; margin-bottom: 4px; }
+details { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); margin: 8px 0; max-width: 80ch; }
+summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style-position: outside; margin-left: 14px; }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details > div { padding: 0 16px 12px; color: var(--ink); }
+details > div p:last-child { margin-bottom: 0; }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 16px; overflow-x: auto; margin: 12px 0 18px; }
+ul.tight { padding-left: 20px; margin: 6px 0 14px; } ul.tight li { margin: 3px 0; }
+.chip { display: inline-block; font: 500 11px/1.6 var(--f-mono); padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); margin: 0 4px 4px 0; white-space: nowrap; }
+@media (max-width: 860px) { .wrap { grid-template-columns: 1fr; gap: 8px; } nav.toc { position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: 16px; columns: 2; } nav.toc .brand, nav.toc .sub { column-span: all; } h1 { font-size: 34px; } .step { grid-template-columns: 1fr; gap: 2px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <div class="brand">DispatchX</div>
+  <div class="sub">Presentation &amp; viva guide</div>
+  <a href="#pitch">The 30-second pitch</a>
+  <a href="#order">Life of one order</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#services">AWS services &amp; concepts</a>
+  <a href="#security">Security in depth</a>
+  <a href="#scaling">Scaling &amp; high availability</a>
+  <a href="#iac">Infrastructure as code &amp; CI/CD</a>
+  <a href="#containers">Docker &amp; Kubernetes</a>
+  <a href="#demo">Demo script (8 min)</a>
+  <a href="#console">AWS console tour</a>
+  <a href="#challenges">Problems we solved</a>
+  <a href="#viva">Viva questions</a>
+  <a href="#cheatsheet">Cheat sheet</a>
+  <a href="#after">After the presentation</a>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Cloud Computing · Sem VII · AWS Cloud Architecting</div>
+  <h1>DispatchX: a real-time delivery &amp; dispatch platform on AWS</h1>
+  <p class="lede">Everything you need for the presentation: what the system does, how each AWS service fits the course syllabus, a minute-by-minute demo, a guided console tour and answers to the questions you are likely to be asked.</p>
+  <dl class="facts">
+    <div><dt>Live URL</dt><dd class="mono">d1lwatbh61o9k3.cloudfront.net</dd></div>
+    <div><dt>AWS region</dt><dd>Sydney · ap-southeast-2</dd></div>
+    <div><dt>Team</dt><dd>Anannya Samudra · Lakshit Sachdeva</dd></div>
+    <div><dt>Code</dt><dd class="mono">github.com/anannyay/DispatchX</dd></div>
+  </dl>
+</header>
+
+<h2 id="pitch">The 30-second pitch</h2>
+<p>DispatchX is a same-city parcel delivery platform, like Porter or Dunzo. A <b>customer</b> books a pickup and drop. Within a few seconds the system finds the <b>nearest available rider</b>, sends them the job, and once they accept, the customer watches the rider move on a <b>live map</b>. A <b>dispatcher</b> watches the whole city from an operations map and steps in when something goes wrong.</p>
+<p>It runs on AWS as a set of Docker containers spread across two data centres (Availability Zones), behind CloudFront, a load balancer and a web application firewall. It scales up on its own under load and keeps working if a server dies. The entire infrastructure is written as code and deployed by a pipeline.</p>
+<div class="note"><b>Why this is a cloud project and not just a web app:</b> real-time traffic (hundreds of GPS pings per second) needs horizontal scaling, WebSockets across many servers, decoupled background processing and managed data stores. Those are exactly the Cloud Architecting topics: VPC design, elasticity, high availability, decoupling, caching, security and automation.</div>
+
+<h2 id="order">Life of one order</h2>
+<p>If you understand this flow you understand the project. Each step names the AWS service involved.</p>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>What happens</th><th>Where it runs</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>The customer opens the site. The request hits <b>CloudFront</b> (HTTPS, global edge network). Static files come from the edge cache; everything else goes to the <b>Application Load Balancer</b>, which checks a secret header so nobody can bypass CloudFront. <b>AWS WAF</b> on the ALB blocks SQL injection, bad inputs and floods.</td><td>CloudFront → WAF → ALB</td></tr>
+<tr><td>2</td><td>The customer books. The <b>API container</b> (FastAPI on <b>ECS</b>) prices the trip, saves the order in <b>RDS MySQL</b> and publishes an <code>order.created</code> event to an <b>SNS</b> topic.</td><td>ECS task in a private subnet, RDS in an isolated subnet</td></tr>
+<tr><td>3</td><td>SNS <b>fans out</b> the one event to three <b>SQS</b> queues: dispatch, notify and analytics. Each queue gets only the event types it cares about (subscription filter policies).</td><td>SNS → SQS</td></tr>
+<tr><td>4</td><td>The <b>consumer</b> container reads the dispatch queue. It asks <b>ElastiCache (Redis)</b> "which online riders are within 3 km?" using Redis geo-search, scores them on distance and rating, and offers the job to the best one with a 20-second timer.</td><td>ECS consumer + ElastiCache</td></tr>
+<tr><td>5</td><td>The offer reaches the rider's phone instantly over <b>Socket.IO (WebSockets)</b>. If they ignore it, a <b>Celery</b> timer task moves on to the next rider. If they decline, it goes straight to the next. Nobody can be double-booked, thanks to Redis locks and an atomic database update.</td><td>ECS worker + Redis</td></tr>
+<tr><td>6</td><td>The rider accepts. Their GPS position streams every 2 seconds; the customer and the dispatcher see the rider move live. This works even though they may be connected to <b>different API servers</b>, because every server shares messages through Redis pub/sub.</td><td>Socket.IO + Redis adapter</td></tr>
+<tr><td>7</td><td>At delivery the rider uploads a photo <b>directly to S3</b> using a short-lived presigned URL, so the image never passes through our servers. S3 emits an event to <b>EventBridge</b>, which triggers a <b>Lambda</b> that validates and tags the photo.</td><td>S3 → EventBridge → Lambda</td></tr>
+<tr><td>8</td><td>Every status change also lands in the analytics queue. A second <b>Lambda</b> writes those events into an <b>S3 data lake</b>, where <b>Athena</b> can query them with SQL (orders per hour, assignment times, top riders).</td><td>SQS → Lambda → S3 → Glue → Athena</td></tr>
+<tr><td>9</td><td>Throughout, <b>CloudWatch</b> collects logs, metrics and alarms, and <b>Prometheus + Grafana</b> show live business metrics. If error rates spike or messages fail, an alarm emails the team through <b>SNS</b>.</td><td>CloudWatch, Grafana</td></tr>
+</tbody></table></div>
+
+<h2 id="architecture">Architecture</h2>
+<p>Three network tiers across two Availability Zones. Traffic only ever flows inward one tier at a time.</p>
+<div class="diagram"><pre class="mermaid">
+flowchart LR
+  U[Users: customer, rider, dispatcher] -->|HTTPS| CF[CloudFront<br/>edge cache + security headers]
+  CF -->|secret origin header| WAF[AWS WAF]
+  subgraph VPC["VPC 10.20.0.0/16 · 2 Availability Zones"]
+    subgraph PUB["Public subnets"]
+      ALB[Application Load Balancer]
+      NAT[NAT Gateway]
+    end
+    subgraph APP["Private app subnets"]
+      ECS["ECS cluster on EC2 Auto Scaling group<br/>api · web · worker · beat · consumer · monitoring"]
+    end
+    subgraph DATA["Isolated data subnets · no internet route"]
+      RDS[(RDS MySQL)]
+      REDIS[(ElastiCache Valkey/Redis)]
+    end
+  end
+  WAF --> ALB --> ECS
+  ECS --> RDS
+  ECS --> REDIS
+  ECS -->|publish| SNS[SNS order-events]
+  SNS --> Q1[SQS dispatch] --> ECS
+  SNS --> Q2[SQS notify] --> ECS
+  SNS --> Q3[SQS analytics] --> L1[Lambda ingest] --> S3L[(S3 data lake)] --> ATH[Glue + Athena]
+  ECS -->|presigned upload| S3P[(S3 photos)] --> EB[EventBridge] --> L2[Lambda validator]
+  ECS -.-> CW[CloudWatch logs, metrics, alarms]
+  CW -.->|alarm| SNSA[SNS alerts → email]
+  ECS -.->|outbound only| NAT
+</pre></div>
+
+<h2 id="services">AWS services and the course concepts behind them</h2>
+<p>Grouped by Cloud Architecting module. The "console" column tells you where to find each one (always in the <b>Sydney</b> region).</p>
+
+<h3>Networking (Creating a networking environment, Connecting networks)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Service</th><th>What we built</th><th>Concept to mention</th></tr></thead>
+<tbody>
+<tr><td>VPC</td><td><code>dispatchx-vpc</code>, 10.20.0.0/16, six /24 subnets: public, app and data, one of each per AZ</td><td>Multi-tier VPC design, CIDR planning, AZ redundancy</td></tr>
+<tr><td>Internet Gateway</td><td>Attached to the VPC; only the public subnets route to it</td><td>Public vs private subnets are defined by route tables</td></tr>
+<tr><td>NAT Gateway</td><td>In the public subnet; lets private containers pull images and call AWS APIs <i>outbound</i> without being reachable inbound</td><td>Egress-only internet for private resources</td></tr>
+<tr><td>Route tables</td><td>Public → IGW, app → NAT, data → nothing (local only)</td><td>The database tier has no path to the internet at all</td></tr>
+<tr><td>Security groups</td><td>Chained: ALB accepts port 80 only from CloudFront; ECS hosts accept only from the ALB; RDS (3306) and Redis (6379) accept only from ECS hosts</td><td>Stateful firewalls, least privilege, SG-to-SG references</td></tr>
+<tr><td>Network ACL</td><td>Extra stateless rules on the data subnets</td><td>Defence in depth: NACLs are stateless and subnet-level, SGs are stateful and instance-level</td></tr>
+<tr><td>VPC endpoint</td><td>S3 gateway endpoint on the private route tables</td><td>Private connectivity to AWS services; cuts NAT data charges</td></tr>
+<tr><td>VPC Flow Logs</td><td>Rejected traffic logged to CloudWatch</td><td>Network auditing and troubleshooting</td></tr>
+</tbody></table></div>
+
+<h3>Compute and containers (Adding a compute layer, Microservices)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Service</th><th>What we built</th><th>Concept to mention</th></tr></thead>
+<tbody>
+<tr><td>EC2 + Auto Scaling</td><td>2 to 4 <code>t3.small</code> instances in the private app subnets, launch template with the ECS-optimized AMI, IMDSv2 enforced, encrypted EBS</td><td>Launch templates, Auto Scaling groups across AZs</td></tr>
+<tr><td>ECS</td><td>Cluster <code>dispatchx-cluster</code> with 6 services: api (2–8), web (2), worker (1–3), beat (1), consumer (1–4), monitoring (1)</td><td>Container orchestration, task definitions, services keep N copies alive</td></tr>
+<tr><td>Capacity provider</td><td>ECS adds EC2 instances automatically when containers cannot be placed</td><td>Two layers of elasticity: tasks and machines</td></tr>
+<tr><td>ECR</td><td>Private registries <code>dispatchx/backend</code>, <code>web</code>, <code>prometheus</code>, <code>grafana</code>, with scan-on-push and lifecycle cleanup</td><td>Container image management and vulnerability scanning</td></tr>
+<tr><td>Cloud Map</td><td>Private DNS <code>dispatchx.local</code>; Prometheus finds API containers through SRV records</td><td>Service discovery for dynamic ports</td></tr>
+<tr><td>Lambda</td><td><code>dispatchx-analytics-ingest</code> and <code>dispatchx-pod-validator</code></td><td>Serverless, event-driven compute, pay per invocation</td></tr>
+</tbody></table></div>
+
+<h3>Data layer (Adding a database layer, Storage, Caching)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Service</th><th>What we built</th><th>Concept to mention</th></tr></thead>
+<tbody>
+<tr><td>RDS MySQL</td><td><code>dispatchx-mysql</code>, MySQL 8.4, encrypted storage, automated backups, slow-query logs, isolated subnets. Multi-AZ can be switched on from the pipeline.</td><td>Managed relational DB, Multi-AZ standby, backups</td></tr>
+<tr><td>ElastiCache</td><td>Valkey 8 (Redis-compatible): rider geo-index, Socket.IO message bus, Celery job broker. Replica with automatic failover can be switched on.</td><td>In-memory caching, sub-millisecond reads, pub/sub</td></tr>
+<tr><td>S3</td><td>Photo bucket (versioning, lifecycle to Infrequent Access after 30 days and Glacier after 90, HTTPS-only policy), data lake bucket, templates bucket</td><td>Object storage, storage classes, lifecycle policies, presigned URLs</td></tr>
+<tr><td>CloudFront</td><td>Single public entry point: HTTPS, caches <code>/_next/static</code> at the edge, passes WebSockets through, adds security headers</td><td>Content delivery network, edge caching, origin protection</td></tr>
+<tr><td>Glue + Athena</td><td>Table <code>order_events</code> over the S3 data lake with partition projection; 4 saved SQL queries</td><td>Data lake pattern, serverless SQL on S3</td></tr>
+</tbody></table></div>
+
+<h3>Decoupling (Building decoupled architectures)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Service</th><th>What we built</th><th>Concept to mention</th></tr></thead>
+<tbody>
+<tr><td>SNS</td><td><code>dispatchx-order-events</code> (fan-out), <code>dispatchx-customer-notifications</code>, <code>dispatchx-alerts</code></td><td>Pub/sub: one publisher, many independent subscribers</td></tr>
+<tr><td>SQS</td><td>dispatch, notify and analytics queues, each with a dead-letter queue after 5 failed attempts; filter policies on the subscriptions</td><td>Fan-out pattern, at-least-once delivery, DLQs, idempotent consumers</td></tr>
+<tr><td>EventBridge</td><td>S3 "Object Created" events route to the validator Lambda</td><td>Event-driven integration between services</td></tr>
+</tbody></table></div>
+
+<h3>Monitoring (Implementing elasticity, high availability and monitoring)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Service</th><th>What we built</th><th>Concept to mention</th></tr></thead>
+<tbody>
+<tr><td>CloudWatch</td><td>Dashboard <code>dispatchx-overview</code>; 10 alarms (API 5xx, p95 latency, unhealthy targets, 3 dead-letter queues, RDS CPU and storage, API CPU, cache memory); log groups per service; Container Insights</td><td>Metrics, logs, alarms, observability</td></tr>
+<tr><td>Prometheus + Grafana</td><td>Running as an ECS service at <code>/grafana</code>; business metrics (orders/min, offers, GPS pings, assign time) next to CloudWatch infrastructure metrics</td><td>Application-level monitoring alongside AWS-native monitoring</td></tr>
+</tbody></table></div>
+
+<h2 id="security">Security in depth</h2>
+<p>Examiners like layered security. DispatchX has a control at every layer:</p>
+<ul class="tight">
+<li><b>Edge:</b> HTTPS everywhere via CloudFront, managed security headers (HSTS, no-sniff, frame options).</li>
+<li><b>Origin protection:</b> the ALB security group only accepts CloudFront's IP ranges, and the ALB rejects any request without CloudFront's secret <code>X-Origin-Verify</code> header (direct hits get 403).</li>
+<li><b>Web firewall:</b> AWS WAF with AWS-managed rule sets (common exploits, known bad inputs, SQL injection) plus per-IP rate limiting.</li>
+<li><b>Network:</b> private app subnets, isolated data subnets, chained security groups, a NACL on the data tier.</li>
+<li><b>Identity:</b> separate IAM roles for EC2 hosts, ECS task execution, the app's tasks and each Lambda, each with only the permissions it needs (for example, the app may only write to <code>pod/*</code> in one bucket and only publish to two topics).</li>
+<li><b>Secrets:</b> database password, JWT signing key and Grafana password are generated by <b>Secrets Manager</b> and injected into containers at start-up. None of them appear in code or in the repository.</li>
+<li><b>Data:</b> encryption at rest on RDS, ElastiCache, EBS, S3 and SQS; an S3 bucket policy denies non-HTTPS access.</li>
+<li><b>Application:</b> JWT access and refresh tokens, role-based access (customer, rider, dispatcher, admin), bcrypt password hashing.</li>
+<li><b>Instances:</b> IMDSv2 required, no SSH keys; shell access goes through Systems Manager Session Manager.</li>
+</ul>
+
+<h2 id="scaling">Scaling and high availability</h2>
+<ul class="tight">
+<li><b>Two Availability Zones</b> for subnets, EC2 hosts and containers (ECS spreads tasks across AZs).</li>
+<li><b>Service auto scaling:</b> the api service targets 60% CPU and grows from 2 to 8 tasks; the consumer scales on SQS queue depth (the classic "scale workers on backlog" pattern); the worker scales on CPU.</li>
+<li><b>Cluster auto scaling:</b> when new tasks do not fit, the ECS capacity provider launches more EC2 instances (2 → 4).</li>
+<li><b>Self-healing:</b> ALB health checks remove sick containers; ECS replaces stopped tasks; the Auto Scaling group replaces failed instances.</li>
+<li><b>Safe deploys:</b> rolling updates with the ECS deployment circuit breaker, which rolls back automatically if new containers fail health checks.</li>
+<li><b>Stateless app tier:</b> no state lives inside a container. WebSocket messages go through Redis, so any API server can serve any user. That is what makes horizontal scaling possible.</li>
+<li><b>Data tier HA (toggle):</b> RDS Multi-AZ standby and an ElastiCache replica with automatic failover, switched on from the pipeline for the demo (off by default to save credits).</li>
+<li><b>Disaster recovery:</b> automated RDS backups, S3 versioning, optional final snapshot on teardown, and the whole environment can be rebuilt from code in about 25 minutes.</li>
+</ul>
+
+<h2 id="iac">Infrastructure as code and CI/CD (Automating your architecture)</h2>
+<p>Nothing was built by clicking in the console. All infrastructure is defined in <b>CloudFormation</b> templates in the repository (<code>infra/</code>) and deployed by <b>GitHub Actions</b>.</p>
+<div class="tbl"><table>
+<thead><tr><th>Stack</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td>dispatchx-bootstrap</td><td>ECR repositories and the templates bucket. Deployed once by hand from the AWS CLI.</td></tr>
+<tr><td>dispatchx (parent)</td><td>Wires together 7 <b>nested stacks</b>, passing outputs from one to the next</td></tr>
+<tr><td>Network</td><td>VPC, subnets, IGW, NAT, route tables, NACL, endpoint, security groups, flow logs</td></tr>
+<tr><td>Data</td><td>RDS, ElastiCache, S3 buckets, Secrets Manager</td></tr>
+<tr><td>Messaging</td><td>SNS topics, SQS queues, DLQs, filter policies, email subscriptions</td></tr>
+<tr><td>App</td><td>ECS cluster, Auto Scaling group, capacity provider, ALB, WAF, Cloud Map, task definitions, services, auto scaling policies</td></tr>
+<tr><td>Edge</td><td>CloudFront distribution</td></tr>
+<tr><td>Analytics</td><td>Lambdas, EventBridge rule, Glue table, Athena workgroup and queries</td></tr>
+<tr><td>Observability</td><td>CloudWatch dashboard and alarms</td></tr>
+</tbody></table></div>
+<p><b>The pipeline</b> (every push to <code>main</code>): <span class="chip">lint templates</span><span class="chip">unit tests</span><span class="chip">end-to-end test</span> → <span class="chip">build 4 Docker images</span><span class="chip">push to ECR</span> → <span class="chip">package &amp; deploy CloudFormation</span> → <span class="chip">seed demo data</span> → <span class="chip">end-to-end test against the live site</span>. A separate workflow destroys everything with one click, and a third deploys the app to Kubernetes for testing.</p>
+<div class="note"><b>Viva line:</b> "The environment is reproducible. We can delete it and rebuild an identical copy from Git in about 25 minutes, and every change is tested before and after it reaches AWS."</div>
+
+<h2 id="containers">Docker and Kubernetes</h2>
+<p><b>Docker:</b> every component (API, web frontend, workers, Prometheus, Grafana) is a Docker image. Locally the whole system runs with one <code>docker compose up</code>; on AWS, ECS runs the same images.</p>
+<p><b>Kubernetes:</b> the <code>k8s/</code> folder runs the same images on a 3-node Kubernetes cluster (kind, Kubernetes-in-Docker). It uses Deployments, a StatefulSet for MySQL with a persistent volume, Services, an NGINX Ingress, HorizontalPodAutoscalers, RBAC and a Job for seeding. GitHub Actions builds this cluster and runs the end-to-end test on it on every push.</p>
+<p><b>Visualising it:</b> the app's <b>Cluster</b> page draws the live cluster, whichever platform it runs on: EC2 instances and ECS tasks on AWS, or nodes and pods on Kubernetes. You can stop a container from that page and watch the orchestrator replace it.</p>
+<div class="tbl"><table>
+<thead><tr><th>Idea</th><th>Amazon ECS (our AWS deployment)</th><th>Kubernetes equivalent</th></tr></thead>
+<tbody>
+<tr><td>Unit of work</td><td>Task</td><td>Pod</td></tr>
+<tr><td>Keep N copies running</td><td>Service</td><td>Deployment</td></tr>
+<tr><td>Machines</td><td>EC2 container instances</td><td>Nodes</td></tr>
+<tr><td>Scale copies on load</td><td>Service auto scaling</td><td>HorizontalPodAutoscaler</td></tr>
+<tr><td>Add machines</td><td>Capacity provider</td><td>Cluster Autoscaler</td></tr>
+<tr><td>Load balancing</td><td>ALB + target groups</td><td>Ingress + Services</td></tr>
+<tr><td>Config and secrets</td><td>Task env vars + Secrets Manager</td><td>ConfigMap + Secret</td></tr>
+<tr><td>Permissions</td><td>IAM task role</td><td>ServiceAccount + RBAC</td></tr>
+<tr><td>Service discovery</td><td>Cloud Map</td><td>Cluster DNS</td></tr>
+</tbody></table></div>
+<div class="note"><b>Why ECS and not EKS on AWS?</b> EKS charges about $73/month just for the Kubernetes control plane, and our Free plan account had to stay within credits. ECS has no control-plane fee and integrates natively with ALB, IAM and CloudWatch. Because the images are identical, moving to EKS later would only mean pointing the <code>k8s/</code> manifests at an EKS cluster.</div>
+
+<h2 id="demo">Demo script (8 minutes)</h2>
+<div class="note warn"><b>Before you start (10 minutes ahead):</b> open the app and log in as Dispatcher to check it loads. Start the simulator so the map is busy: <code>cd D:\dispatchx-app</code> then <code>python simulator\simulator.py --base-url https://d1lwatbh61o9k3.cloudfront.net --riders 60 --orders-per-min 20</code>. Open tabs: the app (Dispatcher), the app in an incognito window (Customer), Grafana, the AWS console on CloudFormation in Sydney, the GitHub Actions page.</div>
+
+<div class="step"><div class="t">0:00</div><div><h4>The problem</h4><p class="say">Same-city deliveries need a rider within seconds and live tracking for the customer. That means hundreds of GPS updates per second, so the system has to scale, stay up when servers fail and process work in the background. We built it on AWS.</p></div></div>
+<div class="step"><div class="t">0:45</div><div><h4>Customer books a delivery</h4><p>Incognito window → Sign in → <b>Customer</b>. Click the map twice (pickup, then drop). Point at the distance, ETA and fare. Click <b>Book delivery</b>.</p><p class="say">The order is saved in RDS and published to SNS, which fans it out to SQS queues. A consumer searches Redis for the nearest rider.</p></div></div>
+<div class="step"><div class="t">1:45</div><div><h4>Matched and tracking live</h4><p>The tracking page shows "Matching", then a rider is assigned within seconds and moves on the map.</p><p class="say">The rider's GPS streams over WebSockets every 2 seconds. The customer may be connected to a different server than the rider; Redis pub/sub carries the message between them.</p></div></div>
+<div class="step"><div class="t">2:30</div><div><h4>Operations map (kepler.gl)</h4><p>Dispatcher tab → <b>Operations</b>. Point at the KPI strip (riders online, average assign time, offers). On the map: cyan riders are available, violet ones are delivering, arcs are live trips, hexagons are demand. Click the <b>cube</b> icon for 3D, and in the left panel turn on <b>Height</b> for Demand density.</p><p class="say">This is Uber's open-source kepler.gl, rendering the live fleet with WebGL. Positions update in place as events arrive.</p></div></div>
+<div class="step"><div class="t">4:00</div><div><h4>Chaos test</h4><p>Click <b>Cluster</b>. Show the EC2 instances in two Availability Zones and the containers on each. Click an <b>api</b> task → <b>Chaos test: stop this task</b>. Go back to Operations: everything still works. Return to Cluster: a replacement task appears marked NEW.</p><p class="say">ECS keeps the desired count. The load balancer stops sending traffic to the dead container and starts using the new one once its health check passes. No user notices.</p></div></div>
+<div class="step"><div class="t">5:00</div><div><h4>Monitoring</h4><p>Grafana tab: orders per minute, offer outcomes, GPS pings per second, API latency per endpoint. Mention the CloudWatch dashboard and the email alarms.</p></div></div>
+<div class="step"><div class="t">5:45</div><div><h4>Infrastructure as code</h4><p>AWS console → CloudFormation: the parent stack and 7 nested stacks. Open the App stack's <b>Resources</b> tab to show how much was created from code. Then GitHub Actions: a green run with test → build → deploy → production test.</p><p class="say">Nothing was clicked together by hand. We can destroy and recreate the whole environment from Git.</p></div></div>
+<div class="step"><div class="t">7:00</div><div><h4>Wrap up</h4><p class="say">We covered multi-tier VPC networking, elastic compute with ECS and Auto Scaling, managed databases and caching, decoupling with SNS and SQS, serverless with Lambda and EventBridge, a data lake with Athena, CloudFront and WAF at the edge, CloudWatch monitoring, IAM and Secrets Manager, and full automation with CloudFormation and CI/CD. The same containers also run on Kubernetes.</p></div></div>
+
+<h2 id="console">AWS console tour</h2>
+<p>If she asks to see "what you did on AWS", follow this order. Check the region selector says <b>Asia Pacific (Sydney)</b> on every page.</p>
+<ol class="console">
+<li><span class="where">CloudFormation → Stacks</span>Show <code>dispatchx</code> and its nested stacks (all <i>CREATE_COMPLETE</i> or <i>UPDATE_COMPLETE</i>) plus <code>dispatchx-bootstrap</code>. Click the parent → <b>Outputs</b> (app URL, Grafana URL) → <b>Events</b> (the deployment history).</li>
+<li><span class="where">VPC → Your VPCs → dispatchx-vpc → Resource map</span>The resource map draws the subnets, route tables, IGW and NAT in one picture. Point out the six subnets in two AZs and that the data route table has no internet route.</li>
+<li><span class="where">VPC → Security groups</span>Open <code>dispatchx-db-sg</code>: the inbound rule allows 3306 only from the ECS security group, not from an IP range. That is security-group chaining.</li>
+<li><span class="where">EC2 → Instances, then EC2 → Auto Scaling groups</span>Two <code>dispatchx-ecs-host</code> instances in different AZs, no public IP. The Auto Scaling group shows min 2, max 4.</li>
+<li><span class="where">ECS → Clusters → dispatchx-cluster</span>Services tab: six services with desired and running counts. Open <b>api</b> → <i>Configuration and networking</i> for the load balancer, then <i>Auto scaling</i> for the CPU target. The <i>Tasks</i> tab shows which instance each task runs on.</li>
+<li><span class="where">EC2 → Load balancers → dispatchx-alb → Listeners → rules</span>The routing rules: <code>/api</code> and <code>/socket.io</code> to the API, <code>/grafana</code> to Grafana, everything else to the web app, and a default 403 for requests that do not come from CloudFront. Target groups show healthy targets.</li>
+<li><span class="where">WAF &amp; Shield → Web ACLs (region Sydney) → dispatchx-waf</span>The managed rule groups and the rate-limit rule, with sampled requests.</li>
+<li><span class="where">CloudFront → Distributions</span>The distribution, its origin (the ALB) and the behaviours for <code>/api/*</code>, <code>/socket.io/*</code> and <code>/_next/static/*</code>.</li>
+<li><span class="where">RDS → Databases → dispatchx-mysql</span>Engine version, instance class, encryption enabled, automated backups, the subnet group (data subnets), "Publicly accessible: No".</li>
+<li><span class="where">ElastiCache → Valkey caches</span>The cache cluster in the data subnets with encryption at rest.</li>
+<li><span class="where">SNS → Topics, then SQS → Queues</span>The order-events topic with three subscriptions (open one to show its filter policy), and the queues with their DLQs and message counts.</li>
+<li><span class="where">Lambda → Functions</span><code>dispatchx-analytics-ingest</code> with its SQS trigger and <code>dispatchx-pod-validator</code> with its EventBridge trigger. The Monitor tab shows invocations.</li>
+<li><span class="where">S3 → Buckets</span>The photo bucket (open a <code>pod/</code> object to show the <i>validated</i> tag the Lambda added), the data lake (<code>events/dt=YYYY-MM-DD/</code> folders) and the templates bucket.</li>
+<li><span class="where">Athena → Query editor → workgroup dispatchx-analytics → Saved queries</span>Run "Orders and GMV per hour" or "Rider assignment latency percentiles": live SQL over the S3 data lake.</li>
+<li><span class="where">CloudWatch → Dashboards → dispatchx-overview, then Alarms</span>ALB traffic, latency, ECS CPU, running tasks, SQS backlog, RDS and cache in one view; the alarm list.</li>
+<li><span class="where">Secrets Manager</span>The generated secrets for the database, JWT and Grafana. Do not click "Retrieve secret value" on a projector.</li>
+<li><span class="where">ECR → Repositories</span>Four repositories, each image tagged with the Git commit it was built from, with scan results.</li>
+</ol>
+
+<h2 id="challenges">Problems we hit and how we solved them</h2>
+<p>Examiners often ask "what challenges did you face?". These are real, and each one shows understanding.</p>
+<div class="tbl"><table>
+<thead><tr><th>Problem</th><th>Cause</th><th>Fix and lesson</th></tr></thead>
+<tbody>
+<tr><td>Every API call returned AccessDenied</td><td>The new AWS Free plan applies a service control policy that only allows one region: the one chosen at sign-up (Sydney).</td><td>Deployed to ap-southeast-2. Lesson: SCPs override even AdministratorAccess.</td></tr>
+<tr><td>Could not create the GitHub OIDC provider</td><td>Also blocked by the Free plan policy</td><td>CI authenticates with an IAM access key stored as an encrypted GitHub secret. OIDC (no stored keys) would be the production choice.</td></tr>
+<tr><td>Image builds failed with "data limit exceeded"</td><td>Anonymous pulls from Amazon ECR Public share a bandwidth cap across GitHub's runners</td><td>Pulled base images from Docker Hub instead, which GitHub runners can use without rate limits.</td></tr>
+<tr><td>Rider offers sometimes got stuck</td><td>A Redis key expired at the same moment the timeout task ran, so the task saw nothing to clean up</td><td>Keys now live 15 s longer than the offer window, and a scheduled "rescue" job re-dispatches stranded orders. Lesson: design for timing races in distributed systems.</td></tr>
+<tr><td>The kepler.gl map crashed with a shader error</td><td>Two versions of deck.gl (the WebGL library) were installed at once</td><td>Pinned every deck.gl and luma.gl package to kepler's versions with npm overrides.</td></tr>
+<tr><td>Several app containers start at once and all run database migrations</td><td>Race between tasks during a deploy</td><td>Migrations take a MySQL named lock (<code>GET_LOCK</code>) so only one runs.</td></tr>
+</tbody></table></div>
+
+<h2 id="viva">Viva questions</h2>
+<details><summary>Why did you use CloudFront if you already have a load balancer?</summary><div><p>CloudFront gives HTTPS without buying a domain or certificate, caches static assets at edge locations close to users, absorbs traffic spikes, and hides the ALB: the ALB only accepts CloudFront's IP ranges and its secret header. The ALB then spreads requests across containers.</p></div></details>
+<details><summary>How do WebSockets work with many servers behind a load balancer?</summary><div><p>Each API server runs a Socket.IO server connected to a shared Redis pub/sub channel. When a rider's GPS ping arrives at server A, it is published to Redis, and server B delivers it to the customer connected there. The ALB has a 120-second idle timeout and sticky sessions for the long-polling fallback.</p></div></details>
+<details><summary>Why SNS plus SQS, and not just SQS?</summary><div><p>That is the fan-out pattern. One <code>order.created</code> event must reach three independent consumers (dispatch, notifications, analytics). SNS copies it to each queue, and each queue buffers work so a slow or failed consumer does not affect the others. Filter policies make each queue receive only the event types it needs.</p></div></details>
+<details><summary>What is a dead-letter queue and why do you need one?</summary><div><p>If a message fails processing 5 times, SQS moves it to a separate DLQ instead of retrying forever. That keeps the main queue flowing and preserves the bad message for debugging. A CloudWatch alarm emails us as soon as anything lands in a DLQ.</p></div></details>
+<details><summary>How do you avoid assigning one order to two riders?</summary><div><p>Three layers. A Redis <code>SET NX</code> lock per rider means a rider never sees two offers at once. A per-order dispatch lock makes duplicate SQS deliveries harmless. Acceptance is a conditional SQL update (<code>WHERE status = 'pending'</code>), so only the first accept succeeds.</p></div></details>
+<details><summary>Why Redis for finding nearby riders?</summary><div><p>Redis has built-in geospatial indexes. <code>GEOSEARCH</code> returns riders within a radius, sorted by distance, in under a millisecond, entirely in memory. Querying MySQL for that on every ping would be far slower. The search radius widens from 3 to 6, 12 and 25 km on retries.</p></div></details>
+<details><summary>How does auto scaling work here?</summary><div><p>Two levels. ECS service auto scaling adds API tasks when average CPU goes above 60%, and consumer tasks when the dispatch queue backs up. When new tasks do not fit on the existing instances, the ECS capacity provider tells the Auto Scaling group to launch more EC2 instances, up to 4.</p></div></details>
+<details><summary>What happens if an Availability Zone goes down?</summary><div><p>Subnets, instances and containers are spread across two AZs, so the ALB keeps routing to the surviving zone and ECS reschedules tasks there. With Multi-AZ enabled, RDS fails over to its standby in about a minute and ElastiCache promotes its replica. The app reconnects automatically (connection pre-ping and recycling).</p></div></details>
+<details><summary>Why are the databases in subnets with no internet access?</summary><div><p>The database never needs to talk to the internet, so its route table has no default route at all. Even a misconfigured security group could not expose it publicly. Only ECS hosts can reach it, on one port.</p></div></details>
+<details><summary>Security group or network ACL: what is the difference?</summary><div><p>Security groups are stateful and attach to resources (return traffic is allowed automatically). NACLs are stateless and attach to subnets (you must allow return traffic explicitly). We use security groups as the main control and a NACL on the data tier as a second layer.</p></div></details>
+<details><summary>Where are passwords stored?</summary><div><p>Secrets Manager generates the database password, JWT key and Grafana password. ECS injects them into containers as environment variables at start-up using the task execution role. They never appear in Git, the templates or the container images.</p></div></details>
+<details><summary>Why upload photos straight to S3?</summary><div><p>The API generates a presigned URL valid for 5 minutes for one object key. The browser uploads directly to S3, so large files never load our servers, and S3 scales without limit. An EventBridge rule then triggers a Lambda that validates the file type and size and tags the object.</p></div></details>
+<details><summary>What is infrastructure as code and why does it matter?</summary><div><p>The infrastructure is described in CloudFormation templates kept in Git. Deployments are repeatable, reviewable and versioned; we can rebuild the identical environment in another account or region, and tear it all down with one command. Nested stacks keep each layer separate and reusable.</p></div></details>
+<details><summary>What does your CI/CD pipeline check?</summary><div><p>It lints the templates (cfn-lint) and checks the wiring between nested stacks, runs unit tests, runs a full end-to-end order test, builds and pushes four images, deploys CloudFormation, seeds data with an ECS one-off task, and runs the end-to-end test again against the live CloudFront URL. On failure it prints the CloudFormation errors and container logs.</p></div></details>
+<details><summary>How do you monitor it?</summary><div><p>CloudWatch handles infrastructure: ALB requests, latency and errors, ECS CPU and task counts (Container Insights), RDS, ElastiCache and SQS metrics, logs from every container, and 10 alarms that email the team. Prometheus and Grafana show application metrics such as orders per minute, offer outcomes and average assignment time.</p></div></details>
+<details><summary>Why ECS on EC2 instead of Fargate?</summary><div><p>The syllabus emphasises the EC2 compute layer, and ECS on EC2 shows both levels of scaling (tasks and instances) plus the capacity provider. Bin-packing several small containers onto two instances is also cheaper for an always-on demo. Fargate would remove instance management at a higher per-task price.</p></div></details>
+<details><summary>What does it cost to run?</summary><div><p>About $4–5 per day in Sydney: EC2 hosts, the NAT Gateway and the ALB are the biggest items. We only run it when needed and destroy it with one workflow; it all came out of the account's free credits.</p></div></details>
+<details><summary>How would you make it production-grade?</summary><div><p>Enable RDS Multi-AZ and the ElastiCache replica permanently, a NAT Gateway per AZ, a custom domain with ACM certificate, OIDC instead of an access key for CI, AWS Backup with cross-region copies, and EKS or Fargate depending on team skills.</p></div></details>
+
+<h2 id="cheatsheet">Cheat sheet</h2>
+<div class="tbl"><table>
+<tbody>
+<tr><td>App</td><td class="mono">https://d1lwatbh61o9k3.cloudfront.net</td></tr>
+<tr><td>Grafana</td><td class="mono">https://d1lwatbh61o9k3.cloudfront.net/grafana/</td></tr>
+<tr><td>Logins</td><td class="mono">customer@dispatchx.dev · rider@dispatchx.dev · dispatch@dispatchx.dev · password dispatchx123 (one-click buttons on the sign-in page)</td></tr>
+<tr><td>AWS region</td><td>Asia Pacific (Sydney), ap-southeast-2</td></tr>
+<tr><td>Repository</td><td class="mono">https://github.com/anannyay/DispatchX</td></tr>
+<tr><td>Simulator</td><td class="mono">python simulator\simulator.py --base-url https://d1lwatbh61o9k3.cloudfront.net --riders 60 --orders-per-min 20</td></tr>
+<tr><td>Numbers we measured</td><td>60 riders streaming about 29 GPS updates/s with 0 errors; average rider assignment about 4 s; first full deployment 23 minutes; later deployments about 8 minutes; Kubernetes CI run about 3 minutes</td></tr>
+<tr><td>Stack</td><td>Next.js, TypeScript, Tailwind, kepler.gl · FastAPI, Python, SQLAlchemy, Alembic, JWT, Socket.IO, Celery · MySQL, Redis · Docker, ECS, EC2, RDS, ElastiCache, S3, SNS, SQS, Lambda, CloudFront, WAF, CloudWatch, CloudFormation · Prometheus, Grafana · Kubernetes</td></tr>
+</tbody></table></div>
+
+<h2 id="after">After the presentation</h2>
+<p>Stop the simulator with <b>Ctrl+C</b>. Then delete everything that costs money:</p>
+<ol class="tight">
+<li>Open <span class="mono">github.com/anannyay/DispatchX/actions</span>.</li>
+<li>Choose <b>Destroy AWS stack</b> → <b>Run workflow</b>, type <code>destroy</code>, run it.</li>
+<li>After about 15 minutes the run turns green and the stack is gone. To bring it back later: <b>Deploy to AWS</b> → <b>Run workflow</b> (about 25 minutes; the URL changes).</li>
+</ol>
+</main>
+</div>
