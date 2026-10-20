@@ -103,14 +103,21 @@ function MarkerItem({ m }: { m: MapMarker }) {
 export default function Map({
   center, zoom = 13, markers = [], lines = [], onMapClick, fitTo, fitKey, dark, className,
 }: MapProps) {
-  // CARTO dark-matter: the same basemap kepler.gl uses by default
-  const tiles = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  // Esri Dark Gray Canvas: keyless dark basemap close to kepler's dark-matter
+  // (CARTO's raster tiles now require an API key outside localhost)
   void dark;
   return (
     <MapContainer center={center} zoom={zoom} className={className ?? "h-full w-full"} zoomControl={false}>
       <TileLayer
-        url={tiles}
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+        maxNativeZoom={16}
+        maxZoom={19}
+        attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+      />
+      <TileLayer
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+        maxNativeZoom={16}
+        maxZoom={19}
       />
       <ClickHandler onMapClick={onMapClick} />
       <Fit points={fitTo} fitKey={fitKey} />
