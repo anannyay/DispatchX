@@ -35,10 +35,11 @@ export default function Navbar({ items = [] }: { items?: NavItem[] }) {
   const { connected } = useSocket();
   const path = usePathname();
   return (
+    <>
     <header className="sticky top-0 z-[1000] flex h-12 shrink-0 items-center justify-between border-b border-k-line bg-k-side px-4">
       <div className="flex h-full items-center gap-6">
         <Wordmark />
-        <nav className="hidden h-full items-center md:flex">
+        <nav aria-label="Console navigation" className="hidden h-full items-center md:flex">
           {items.map((i) =>
             i.external ? (
               <a key={i.href} href={i.href} target="_blank" rel="noreferrer" className="k-tab">{i.label}</a>
@@ -63,5 +64,11 @@ export default function Navbar({ items = [] }: { items?: NavItem[] }) {
         )}
       </div>
     </header>
+    {items.length > 0 && <nav aria-label="Mobile console navigation" className="flex shrink-0 overflow-x-auto border-b border-k-line bg-k-side px-2 md:hidden">
+      {items.map((i) => i.external
+        ? <a key={i.href} href={i.href} target="_blank" rel="noreferrer" className="k-tab shrink-0">{i.label}</a>
+        : <Link key={i.href} href={i.href} className={`k-tab shrink-0 ${path === i.href ? "k-tab-active" : ""}`}>{i.label}</Link>)}
+    </nav>}
+    </>
   );
 }

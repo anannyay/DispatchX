@@ -25,6 +25,12 @@ Demo accounts (password `dispatchx123`): `customer@dispatchx.dev`, `rider@dispat
 
 ## 2. Current state (as of this handoff)
 
+**Local UI update — October 20, 2026:** the public cloud explorer and presentation cleanup
+are implemented locally, with checks and remaining work in
+[`docs/cloud-explorer-handoff.md`](docs/cloud-explorer-handoff.md). Consult the feature branch/PR
+for publication status; no AWS deployment was performed during this work. The AWS/CI statements
+below are from the original handoff, not a current health check.
+
 - Deployed and working on AWS in **ap-southeast-2 (Sydney)**.
   App: `https://d1lwatbh61o9k3.cloudfront.net` · Grafana: `/grafana/`.
   The CloudFront domain changes if the stack is destroyed and recreated; read the `AppUrl`
@@ -62,6 +68,10 @@ frontend/           Next.js 15 (App Router) + TypeScript + Tailwind, output: sta
   src/app/            pages: / (landing), /login, /register, /customer, /customer/orders/[id],
                       /rider, /dispatch (kepler ops map), /dispatch/cluster
   src/components/kepler/OpsMap.tsx  live kepler.gl map (see section 8)
+  src/app/architecture/            public, backend-independent cloud explorer
+  src/components/architecture/     diagram, playback and environment comparison
+  src/lib/architecture*.ts         diagram content and validated shareable view state
+  tests/                          architecture data/state checks and optional browser smoke
   src/components/kepler/store.ts    redux store for kepler.gl, map controls config
   src/components/Map.tsx            Leaflet map for customer/rider pages (Esri Dark Gray tiles)
   src/components/ui.tsx             design-system primitives (Button, Panel, Metric, StatusBadge, KV…)
@@ -324,3 +334,16 @@ ServiceAccount can list pods/nodes/deployments/events and delete pods (Cluster V
   Changes only under `docs/` or root markdown do not deploy.
 - After a deploy, verify with the run's smoke test result and ask the owners to check the live UI:
   agent sandboxes usually cannot reach CloudFront or map tile servers.
+
+## 14. Cloud explorer follow-up
+
+- Read `docs/cloud-explorer-handoff.md` for the local October 20, 2026 implementation,
+  exact checks, presentation path and remaining gaps.
+- `/architecture` is a public, backend-independent schematic. `/dispatch/cluster` is the
+  authenticated snapshot view. Never imply that playback performs live scaling or chaos actions.
+- Keep Docker packaging, local/CI Kubernetes, and AWS ECS on EC2 distinct; do not claim EKS.
+- Frontend checks: `npm test`, `npx tsc --noEmit --incremental false`, `npm run build`.
+  `npm run test:browser` needs the external tool/browser described in the handoff.
+- The existing staff-accessible stop-task endpoint remains a public-demo risk. Address its
+  backend authorization before deploying this presentation publicly; stale-button disabling
+  is not a security boundary.

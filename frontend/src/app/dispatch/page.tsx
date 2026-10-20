@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { AlertTriangle, ExternalLink, RotateCcw, UserCheck, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ExternalLink, RotateCcw, SlidersHorizontal, UserCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import RequireRole from "@/components/RequireRole";
@@ -32,25 +32,65 @@ function ControlRoom() {
   const [alerts, setAlerts] = useState<LogLine[]>([]);
   const [tab, setTab] = useState<Tab>("attention");
   const [selected, setSelected] = useState<number | null>(null);
+  const [moreMetrics, setMoreMetrics] = useState(false);
   const pending = useRef<Record<number, RiderLocation>>({});
-
-  const loadFleet = useCallback(async () => {
-    const list = await api<FleetRider[]>("/admin/fleet");
-    setRiders(Object.fromEntries(list.map((r) => [r.rider_id, r])));
-  }, []);
-  const loadOrders = useCallback(async () => {
-    const list = await api<Order[]>("/orders?limit=200");
-    setOrders(Object.fromEntries(list.map((o) => [o.id, o])));
-  }, []);
-  const loadStats = useCallback(() => api<Stats>("/admin/stats").then(setStats).catch(() => {}), []);
+  const fleetChanges = useRef(new Set<number>());
+  const orderChanges = useRef(new Set<number>());
+  const [fleetLoaded, setFleetLoaded] = useState(false);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    Promise.allSettled([loadFleet(), loadOrders()]).then(() => setReady(true));
-    loadStats();
-    const s = setInterval(loadStats, 4000);
-    const f = setInterval(() => loadFleet().catch(() => {}), 20000);
-    return () => { clearInterval(s); clearInterval(f); };
-  }, [loadFleet, loadOrders, loadStats]);
+    let active = true;
+    let fleetTimer: ReturnType<typeof setTimeout> | undefined;
+    let statsTimer: ReturnType<typeof setTimeout> | undefined;
+    setReady(false);
+    async function loadFleet() {
+      fleetChanges.current.clear();
+      try {
+        const list = await api<FleetRider[]>("/admin/fleet");
+        if (!active) return;
+        const changed = new Set(fleetChanges.current);
+        setRiders((prev) => {
+          const next = Object.fromEntries(list.map((r) => [r.rider_id, r]));
+          // Preserve socket updates that arrived while the snapshot was in flight.
+          for (const id of changed) {
+            if (prev[id]) next[id] = { ...next[id], ...prev[id] };
+            else delete next[id];
+          }
+          return next;
+        });
+        setFleetLoaded(true);
+      } catch { /* retain the last fleet snapshot */ }
+      finally { if (active) fleetTimer = setTimeout(loadFleet, 20000); }
+    }
+    async function loadOrders() {
+      orderChanges.current.clear();
+      const list = await api<Order[]>("/orders?limit=200");
+      if (!active) return;
+      const changed = new Set(orderChanges.current);
+      setOrders((prev) => {
+        const next = Object.fromEntries(list.map((o) => [o.id, o]));
+        for (const id of changed) if (prev[id]) next[id] = prev[id];
+        return next;
+      });
+      setOrdersLoaded(true);
+    }
+    async function loadStats() {
+      try {
+        const next = await api<Stats>("/admin/stats");
+        if (active) setStats(next);
+      } catch { /* retain the last metrics snapshot */ }
+      finally { if (active) statsTimer = setTimeout(loadStats, 4000); }
+    }
+    Promise.allSettled([loadFleet(), loadOrders()]).then(() => { if (active) setReady(true); });
+    void loadStats();
+    return () => {
+      active = false;
+      clearTimeout(statsTimer);
+      clearTimeout(fleetTimer);
+    };
+  }, [retryKey]);
 
   // GPS pings can arrive hundreds of times a second: buffer and apply once a second
   useSocketEvent<RiderLocation>("fleet:location", useCallback((l: RiderLocation) => { pending.current[l.rider_id] = l; }, []));
@@ -59,6 +99,7 @@ function ControlRoom() {
       const batch = pending.current;
       if (!Object.keys(batch).length) return;
       pending.current = {};
+      for (const l of Object.values(batch)) fleetChanges.current.add(l.rider_id);
       setRiders((prev) => {
         const next = { ...prev };
         for (const l of Object.values(batch)) next[l.rider_id] = { ...next[l.rider_id], ...l, last_seen_s: 0 };
@@ -69,6 +110,8 @@ function ControlRoom() {
   }, []);
 
   useSocketEvent<{ rider_id: number; online: boolean; name?: string; lat?: number; lng?: number }>("fleet:rider", useCallback((d) => {
+    fleetChanges.current.add(d.rider_id);
+    if (!d.online) delete pending.current[d.rider_id];
     setRiders((prev) => {
       const next = { ...prev };
       if (!d.online) delete next[d.rider_id];
@@ -80,6 +123,7 @@ function ControlRoom() {
 
   const pushLog = useCallback((l: LogLine) => setLog((prev) => [l, ...prev].slice(0, 120)), []);
   useSocketEvent<Order>("order:update", useCallback((o: Order) => {
+    orderChanges.current.add(o.id);
     setOrders((prev) => ({ ...prev, [o.id]: o }));
     pushLog({ at: Date.now(), msg: `#${o.id} ${o.status.replace("_", " ")}${o.rider_name ? ` · ${o.rider_name}` : ""}`, order_id: o.id });
   }, [pushLog]));
@@ -122,27 +166,35 @@ function ControlRoom() {
   const nearest = sel && (sel.status === "unassigned" || sel.status === "pending") ? nearestAvailable(sel) : null;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex min-h-screen flex-col lg:h-screen">
       <Navbar items={DISPATCH_NAV} />
 
-      <div className="flex shrink-0 divide-x divide-k-line overflow-x-auto border-b border-k-line bg-k-side">
-        <Metric label="Riders online" value={s?.riders_online ?? "–"} />
-        <Metric label="Available" value={s?.riders_available ?? "–"} tone="good" />
-        <Metric label="Waiting" value={waiting} tone={(bs.unassigned ?? 0) > 0 ? "bad" : waiting > 5 ? "warn" : "default"} />
-        <Metric label="In progress" value={(bs.assigned ?? 0) + (bs.picked_up ?? 0)} />
-        <Metric label="Assign time" value={s?.avg_assign_seconds != null ? `${s.avg_assign_seconds}s` : "–"} sub={s?.p95_assign_seconds != null ? `p95 ${s.p95_assign_seconds}s` : "avg"} />
-        <Metric label="Delivered / h" value={s?.delivered_last_hour ?? "–"} sub={s?.avg_delivery_minutes ? `avg ${s.avg_delivery_minutes} min` : undefined} />
+      <div className="flex shrink-0 flex-col border-b border-k-line bg-k-side sm:flex-row">
+        <div className="flex min-w-0 flex-1 items-stretch divide-x divide-k-line overflow-x-auto [&>div]:min-w-[110px]">
+          <Metric label="Riders online" value={s?.riders_online ?? "–"} sub={s ? `${s.riders_available} available` : undefined} />
+          <Metric label="Waiting" value={s ? waiting : "–"} tone={(bs.unassigned ?? 0) > 0 ? "bad" : waiting > 5 ? "warn" : "default"} />
+          <Metric label="In progress" value={s ? (bs.assigned ?? 0) + (bs.picked_up ?? 0) : "–"} />
+          <Metric label="Assign time" value={s?.avg_assign_seconds != null ? `${s.avg_assign_seconds}s` : "–"} sub={s?.p95_assign_seconds != null ? `p95 ${s.p95_assign_seconds}s` : "avg"} />
+          <Metric label="Delivered / h" value={s?.delivered_last_hour ?? "–"} sub={s?.avg_delivery_minutes ? `avg ${s.avg_delivery_minutes} min` : undefined} />
+        </div>
+        <button onClick={() => setMoreMetrics((value) => !value)} aria-expanded={moreMetrics} aria-controls="secondary-metrics"
+          className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-k-line px-4 py-2.5 text-xs text-k-text hover:bg-k-panel hover:text-k-hi focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-k-accent sm:border-l sm:border-t-0">
+          <SlidersHorizontal size={14} /> {moreMetrics ? "Fewer metrics" : "More metrics"}
+          {(s?.sla_breaches_active ?? 0) > 0 && <span className="text-k-err">{s?.sla_breaches_active} SLA alerts</span>}
+        </button>
+      </div>
+      <div id="secondary-metrics" hidden={!moreMetrics} className={`${moreMetrics ? "grid" : "hidden"} shrink-0 grid-cols-1 divide-y divide-k-line border-b border-k-line bg-k-side sm:grid-cols-3 sm:divide-x sm:divide-y-0 [&>div>div]:whitespace-normal [&>div>div]:break-words [&>div>div]:overflow-visible`}>
         <Metric label="Revenue 24h" value={s ? inr(s.revenue_24h) : "–"} />
-        <Metric label="SLA breaches" value={s?.sla_breaches_active ?? 0} tone={(s?.sla_breaches_active ?? 0) > 0 ? "bad" : "default"} />
-        <Metric label="Offers" value={s ? `${s.offers.accepted}/${s.offers.sent}` : "–"} sub={s ? `${s.offers.rejected} declined · ${s.offers.expired} expired` : undefined} />
+        <Metric label="SLA breaches" value={s?.sla_breaches_active ?? "–"} tone={(s?.sla_breaches_active ?? 0) > 0 ? "bad" : "default"} />
+        <Metric label="Offers accepted / sent" value={s ? `${s.offers.accepted}/${s.offers.sent}` : "–"} sub={s ? `${s.offers.rejected} declined · ${s.offers.expired} expired` : undefined} />
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        <main className="relative min-w-0 flex-1 bg-[#0e1116]">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <main className="relative min-h-[320px] min-w-0 flex-1 bg-[#0e1116] lg:min-h-0">
           {ready && <OpsMap riders={riderList} orders={orderList} onSelectOrder={setSelected} />}
         </main>
 
-        <aside className="flex w-[380px] shrink-0 flex-col border-l border-k-line bg-k-side">
+        <aside className="flex min-h-[420px] min-w-0 w-full shrink-0 flex-col border-t border-k-line bg-k-side lg:min-h-0 lg:w-[380px] lg:border-l lg:border-t-0">
           {alerts.length > 0 && (
             <div className="max-h-28 shrink-0 space-y-1 overflow-y-auto border-b border-k-line px-3 py-2 k-scroll">
               {alerts.slice(0, 5).map((a, i) => (
@@ -198,12 +250,17 @@ function ControlRoom() {
               <button key={t} onClick={() => setTab(t)}
                 className={`flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium capitalize ${tab === t ? "border-k-accent text-k-hi" : "border-transparent text-k-label hover:text-k-text"}`}>
                 {t}
-                <span className={`font-mono text-2xs ${t === "attention" && tabs[t].length ? "text-k-err" : "text-k-label"}`}>{tabs[t].length}</span>
+                <span className={`font-mono text-2xs ${t === "attention" && tabs[t].length ? "text-k-err" : "text-k-label"}`}>{ordersLoaded ? tabs[t].length : "–"}</span>
               </button>
             ))}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto k-scroll">
-            {tabs[tab].length === 0 ? (
+          <div className="max-h-96 min-h-0 flex-1 overflow-auto k-scroll lg:max-h-none">
+            {!ordersLoaded ? (
+              <div role="status" className="space-y-2 px-4 py-8 text-center text-xs text-k-label">
+                <p>{ready ? "Orders could not be loaded." : "Loading orders…"}</p>
+                {ready && <Button size="sm" variant="secondary" onClick={() => setRetryKey((key) => key + 1)}>Retry loading</Button>}
+              </div>
+            ) : tabs[tab].length === 0 ? (
               <div className="px-4 py-8 text-center text-xs text-k-label">{tab === "attention" ? "Nothing needs attention." : "No orders."}</div>
             ) : (
               <table className="w-full text-xs">
@@ -222,20 +279,20 @@ function ControlRoom() {
             )}
           </div>
 
-          <div className="h-44 shrink-0 border-t border-k-line">
-            <div className="flex items-center justify-between px-3 py-1.5">
-              <span className="k-label">Dispatch log</span>
-              <span className="font-mono text-2xs text-k-label">{riderList.length} riders tracked</span>
-            </div>
-            <ul className="h-[calc(100%-28px)] overflow-y-auto px-3 pb-2 font-mono text-2xs leading-5 k-scroll">
+          <details className="group min-w-0 shrink-0 border-t border-k-line">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-3 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-k-accent [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2 k-label"><ChevronDown size={12} className="-rotate-90 transition group-open:rotate-0" /> Dispatch log</span>
+              <span className="font-mono text-2xs text-k-label">{log.length} events · {fleetLoaded || riderList.length > 0 ? riderList.length : "–"} riders tracked</span>
+            </summary>
+            <ul className="h-36 overflow-y-auto px-3 pb-2 font-mono text-2xs leading-5 k-scroll">
               {log.map((l, i) => (
-                <li key={i} className={`truncate ${l.level === "critical" ? "text-k-err" : l.level === "warning" ? "text-k-warn" : "text-k-text"}`}>
+                <li key={i} className={`whitespace-normal break-words ${l.level === "critical" ? "text-k-err" : l.level === "warning" ? "text-k-warn" : "text-k-text"}`}>
                   <span className="text-k-label">{new Date(l.at).toLocaleTimeString([], { hour12: false })}</span> {l.msg}
                 </li>
               ))}
               {log.length === 0 && <li className="text-k-label">Waiting for activity. Start the simulator to see live dispatch.</li>}
             </ul>
-          </div>
+          </details>
         </aside>
       </div>
     </div>

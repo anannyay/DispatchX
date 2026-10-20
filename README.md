@@ -8,6 +8,17 @@ whole fleet from a control room.
 Alembic · JWT · Socket.IO · Celery · Redis · SNS · SQS · Docker · EC2 · RDS · S3 ·
 CloudWatch · Prometheus · Grafana
 
+## Explore the cloud architecture
+
+Open **`/architecture`** in the web app for the public, backend-independent cloud explorer.
+Inspect services, Docker images/containers, Kubernetes orchestration and the AWS ECS deployment;
+play guided delivery, GPS, scaling and recovery flows, or copy a link to an individual step.
+The diagrams explain repository configuration, **not live health**. Authenticated dispatchers
+can inspect actual platform snapshots under `/dispatch/cluster` when a stack is running.
+
+See [the explorer handoff](docs/cloud-explorer-handoff.md) for the presentation sequence,
+frontend-only preview, verification commands and known limitations.
+
 ## Repository layout
 
 ```

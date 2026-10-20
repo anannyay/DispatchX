@@ -1,91 +1,78 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, ArrowRight, Boxes, Radio, Route } from "lucide-react";
+import { ArrowRight, Boxes, Cloud, Database, GitBranch, Layers3, Network, Radio, Server, ShieldCheck } from "lucide-react";
 import { Wordmark } from "@/components/Navbar";
 import { homeFor, useAuth } from "@/lib/auth";
+import "./home.css";
 
-const CAPABILITIES = [
-  { icon: Route, title: "Geo-dispatch", body: "Redis GEOSEARCH matches the nearest available rider. Offers time out and cascade automatically." },
-  { icon: Radio, title: "Live tracking", body: "Socket.IO over a Redis adapter streams rider GPS to customers and dispatchers across every API instance." },
-  { icon: Activity, title: "Operations map", body: "kepler.gl renders the fleet, active trips and demand density in real time for the dispatch desk." },
-  { icon: Boxes, title: "Cloud-native", body: "Containers on ECS behind CloudFront and an ALB, with RDS, ElastiCache and SNS/SQS. Also runs on Kubernetes." },
+const LAYERS = [
+  { id: "services", n: "01", icon: Layers3, title: "Services", description: "Who handles each part of a delivery?" },
+  { id: "docker", n: "02", icon: Boxes, title: "Docker", description: "How does code become a running container?" },
+  { id: "kubernetes", n: "03", icon: Network, title: "Kubernetes", description: "How do pods scale and recover?" },
+  { id: "aws", n: "04", icon: Cloud, title: "AWS", description: "What does each cloud service actually do?" },
 ];
-
-const STACK = ["Next.js", "FastAPI", "Socket.IO", "MySQL", "Redis", "Celery", "SNS · SQS", "ECS on EC2", "CloudFront", "kepler.gl"];
 
 export default function Home() {
   const { user } = useAuth();
+  const demo = user ? homeFor(user.role) : "/login";
   return (
-    <div className="min-h-screen bg-k-canvas">
-      <header className="flex h-14 items-center justify-between border-b border-k-line px-6">
+    <div className="dx-home">
+      <header className="dx-home-header">
         <Wordmark />
-        <nav className="flex items-center gap-2">
-          {user ? (
-            <Link href={homeFor(user.role)} className="inline-flex h-8 items-center gap-1.5 rounded bg-k-go px-3 text-sm font-semibold text-white hover:bg-k-gohover">
-              Open console <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          ) : (
-            <>
-              <Link href="/login" className="h-8 rounded px-3 text-sm font-medium leading-8 text-k-text hover:text-k-hi">Sign in</Link>
-              <Link href="/register" className="h-8 rounded bg-k-go px-3 text-sm font-semibold leading-8 text-white hover:bg-k-gohover">Create account</Link>
-            </>
-          )}
+        <nav aria-label="Main navigation">
+          <Link href="/architecture">Cloud explorer</Link>
+          <a href="https://github.com/anannyay/DispatchX" target="_blank" rel="noreferrer" className="dx-source-nav">Source code</a>
+          <Link href={demo} className="dx-nav-demo">{user ? "Open console" : "Open demo"} <ArrowRight size={14} /></Link>
         </nav>
       </header>
-
-      <main className="mx-auto max-w-6xl px-6">
-        <section className="grid gap-12 border-b border-k-line py-20 lg:grid-cols-[1.3fr_1fr]">
-          <div>
-            <div className="k-label">Real-time delivery &amp; dispatch</div>
-            <h1 className="mt-4 text-[44px] font-semibold leading-[1.08] tracking-[-0.02em] text-k-hi">
-              Same-city delivery,<br />dispatched in seconds.
-            </h1>
-            <p className="mt-5 max-w-xl text-[15px] leading-7 text-k-text">
-              DispatchX connects customers, riders and a dispatch desk on one live system: geo-matching,
-              GPS tracking and an operations map, deployed on AWS.
-            </p>
-            <div className="mt-8 flex gap-3">
-              <Link href="/register" className="inline-flex h-10 items-center gap-2 rounded bg-k-go px-4 text-sm font-semibold text-white hover:bg-k-gohover">
-                Send a parcel <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link href="/register?role=rider" className="inline-flex h-10 items-center rounded bg-k-panel px-4 text-sm font-semibold text-k-hi hover:bg-k-hover">
-                Ride with DispatchX
-              </Link>
+      <main className="dx-home-shell">
+        <section className="dx-hero">
+          <div className="dx-hero-copy">
+            <div className="dx-eyebrow"><span /> A CLOUD COMPUTING PROJECT</div>
+            <h1>Dispatch a parcel.<br /><span>See the cloud at work.</span></h1>
+            <p>A real-time delivery platform with an inside view of the system that powers it. Follow a request through services, containers, queues, and the cloud.</p>
+            <div className="dx-hero-actions">
+              <Link href="/architecture" className="dx-primary-link">Explore the architecture <ArrowRight size={16} /></Link>
+              <Link href={demo} className="dx-secondary-link">Try the delivery app <ArrowRight size={14} /></Link>
             </div>
+            <div className="dx-hero-caption"><span /> AWS deployment: ECS on EC2. Local orchestration: Kubernetes.</div>
           </div>
-          <div className="k-panel self-start">
-            <div className="border-b border-k-line px-4 py-2.5 k-label">Demo access</div>
-            <dl className="divide-y divide-k-line/60 px-4 font-mono text-sm">
-              {[["Customer", "customer@dispatchx.dev"], ["Rider", "rider@dispatchx.dev"], ["Dispatcher", "dispatch@dispatchx.dev"], ["Password", "dispatchx123"]].map(([k, v]) => (
-                <div key={k} className="flex justify-between py-2.5">
-                  <dt className="font-sans text-xs text-k-label">{k}</dt>
-                  <dd className="text-k-hi">{v}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="border-t border-k-line px-4 py-3">
-              <Link href="/login" className="inline-flex items-center gap-1.5 text-sm font-medium text-k-accent hover:underline">
-                One-click demo sign in <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+          <Link href="/architecture?layer=aws" className="dx-blueprint" aria-label="Explore the AWS deployment architecture">
+            <div className="dx-blueprint-heading"><span>DEPLOYMENT BLUEPRINT</span><span>AWS / SYDNEY</span></div>
+            <div className="dx-blueprint-flow">
+              <div className="dx-blueprint-node"><Cloud size={20} /><div><strong>CloudFront + ALB</strong><span>Receive and route requests</span></div><span className="dx-blueprint-index">01</span></div>
+              <div className="dx-blueprint-wire"><span>HTTP · REST · WEBSOCKETS</span></div>
+              <div className="dx-blueprint-node dx-blueprint-compute"><Server size={20} /><div><strong>ECS services on EC2</strong><span>Web, API, workers, scheduler, consumer</span></div><span className="dx-blueprint-index">02</span></div>
+              <div className="dx-blueprint-wire"><span>STATE · EVENTS · OBJECTS</span></div>
+              <div className="dx-blueprint-bottom">
+                <div><Database size={17} /><strong>RDS + cache</strong><span>Store & coordinate</span></div>
+                <div><GitBranch size={17} /><strong>SNS + SQS</strong><span>Deliver events</span></div>
+                <div><Boxes size={17} /><strong>S3</strong><span>Keep the evidence</span></div>
+              </div>
             </div>
+            <div className="dx-blueprint-footer"><span>Open the interactive system map</span><ArrowRight size={15} /></div>
+          </Link>
+        </section>
+        <section className="dx-layer-section" aria-labelledby="layers-title">
+          <div className="dx-section-heading"><div><div className="dx-eyebrow">UNDERSTAND IT, ONE LAYER AT A TIME</div><h2 id="layers-title">A clear path through the stack.</h2></div><p>Click a layer. Inspect a component.<br />Play a walkthrough of what happens next.</p></div>
+          <div className="dx-layer-grid">
+            {LAYERS.map(({ id, n, icon: Icon, title, description }) => <Link key={id} href={`/architecture?layer=${id}`} className="dx-layer-card">
+              <div className="dx-layer-top"><span>{n}</span><Icon size={23} strokeWidth={1.4} /></div>
+              <h3>{title}</h3><p>{description}</p><div className="dx-layer-open">Explore layer <ArrowRight size={14} /></div>
+            </Link>)}
           </div>
         </section>
-
-        <section className="grid gap-px border-b border-k-line bg-k-line sm:grid-cols-2 lg:grid-cols-4">
-          {CAPABILITIES.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="bg-k-canvas p-6">
-              <Icon className="h-5 w-5 text-k-accent" strokeWidth={1.5} />
-              <div className="mt-4 text-sm font-semibold text-k-hi">{title}</div>
-              <div className="mt-1.5 text-sm leading-6 text-k-text">{body}</div>
-            </div>
-          ))}
+        <section className="dx-demo-section">
+          <div className="dx-demo-copy"><div className="dx-eyebrow">THE APPLICATION IN MOTION</div><h2>Book. Match. Track. Deliver.</h2><p>A customer places an order. A nearby rider gets a timed offer. The dispatcher sees the fleet and can step in when a delivery needs attention.</p><Link href={demo}>Open the role-based demo <ArrowRight size={15} /></Link></div>
+          <div className="dx-proof-grid">
+            <div><GitBranch size={18} /><h3>Events drive the work</h3><p>Queues connect dispatch, notifications, and analytics.</p></div>
+            <div><Radio size={18} /><h3>Updates arrive live</h3><p>Socket.IO and shared Redis state connect every replica.</p></div>
+            <div><ShieldCheck size={18} /><h3>Recovery is visible</h3><p>Explore retries, health checks, and replacement tasks.</p></div>
+            <div><Server size={18} /><h3>Infrastructure has a view</h3><p>Inspect actual tasks, pods, capacity, and scheduler events.</p></div>
+          </div>
         </section>
-
-        <section className="flex flex-wrap items-center gap-x-6 gap-y-2 py-8">
-          <span className="k-label">Built with</span>
-          {STACK.map((s) => <span key={s} className="font-mono text-xs text-k-text">{s}</span>)}
-        </section>
+        <footer className="dx-home-footer"><span>DISPATCHX / BUILT TO RUN. BUILT TO EXPLAIN.</span><div><Link href="/register">Create an account</Link><Link href="/architecture">Cloud explorer <ArrowRight size={12} /></Link></div></footer>
       </main>
     </div>
   );
