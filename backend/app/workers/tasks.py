@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import timedelta
 
 from app.db import SessionLocal
@@ -51,6 +52,8 @@ def sla_monitor_task():
                         "msg": f"Order #{o.id} is past its SLA ({o.eta_minutes:.0f} min promised)",
                     }, "dispatch")
     r.set("metrics:sla_breaches_active", len(breaches))
+    # A last-success observation, not a count of healthy workers or an uptime SLA.
+    r.set("ops:maintenance:last_success", time.time(), ex=86400)
     return breaches
 
 

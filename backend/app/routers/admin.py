@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.deps import require_staff
 from app.models import Order, OrderStatus, Role, User, utcnow
 from app.redis_client import AVAILABLE, ONLINE, metric, order_offer, order_tried, r, rider_offer, rider_state
 from app.schemas import AssignIn
 from app.services import infra
+from app.services.operations import system_snapshot
 from app.services.dispatch import OfferError, accept_offer, release_rider
 from app.services.orders import InvalidTransition, serialize, transition
 
@@ -51,26 +53,47 @@ def stats(_: User = Depends(require_staff), db: Session = Depends(get_db)):
 def fleet(_: User = Depends(require_staff)):
     now = time.time()
     riders = []
-    for rid in r.smembers(ONLINE):
-        st = r.hgetall(rider_state(rid))
-        if not st.get("lat"):
-            continue
-        riders.append({
-            "rider_id": int(rid), "name": st.get("name"), "lat": float(st["lat"]), "lng": float(st["lng"]),
-            "heading": float(st.get("heading") or 0),
-            "order_id": int(st["order_id"]) if st.get("order_id") else None,
-            "available": bool(r.sismember(AVAILABLE, rid)), "offer": r.get(rider_offer(rid)),
-            "vehicle": st.get("vehicle"), "rating": float(st.get("rating") or 0),
-            "last_seen_s": round(now - float(st.get("ts", now)), 1),
-        })
+    ids = list(r.smembers(ONLINE))
+    # Bound each batch, not the fleet: preserve the full API response contract.
+    for start in range(0, len(ids), 200):
+        batch = ids[start:start + 200]
+        pipe = r.pipeline(transaction=False)
+        for rid in batch:
+            pipe.hgetall(rider_state(rid))
+            pipe.sismember(AVAILABLE, rid)
+            pipe.get(rider_offer(rid))
+        values = pipe.execute()
+        for index, rid in enumerate(batch):
+            st, available, offer = values[index * 3:index * 3 + 3]
+            if not st.get("lat"):
+                continue
+            riders.append({
+                "rider_id": int(rid), "name": st.get("name"), "lat": float(st["lat"]), "lng": float(st["lng"]),
+                "heading": float(st.get("heading") or 0),
+                "order_id": int(st["order_id"]) if st.get("order_id") else None,
+                "available": bool(available), "offer": offer,
+                "vehicle": st.get("vehicle"), "rating": float(st.get("rating") or 0),
+                "last_seen_s": round(now - float(st.get("ts", now)), 1),
+            })
     return riders
 
 
 @router.get("/riders")
 def riders(_: User = Depends(require_staff), db: Session = Depends(get_db)):
     users = db.query(User).filter(User.role == Role.rider).order_by(User.id).limit(500).all()
-    return [{"id": u.id, "name": u.name, "online": bool(r.sismember(ONLINE, u.id)),
-             "available": bool(r.sismember(AVAILABLE, u.id))} for u in users]
+    pipe = r.pipeline(transaction=False)
+    for user in users:
+        pipe.sismember(ONLINE, user.id)
+        pipe.sismember(AVAILABLE, user.id)
+    values = pipe.execute()
+    return [{"id": user.id, "name": user.name, "online": bool(values[index * 2]),
+             "available": bool(values[index * 2 + 1])} for index, user in enumerate(users)]
+
+
+@router.get("/system")
+def system(user: User = Depends(require_staff), db: Session = Depends(get_db)):
+    """Application signals, not live autoscaler telemetry or an SLO assertion."""
+    return system_snapshot(db, r, user)
 
 
 @router.post("/orders/{order_id}/redispatch")
@@ -114,18 +137,25 @@ def force_assign(order_id: int, body: AssignIn, user: User = Depends(require_sta
 
 
 @router.get("/infra")
-def infrastructure(_: User = Depends(require_staff)):
+def infrastructure(user: User = Depends(require_staff)):
     """Live container platform snapshot (ECS or Kubernetes) for the Cluster View."""
     try:
-        return infra.snapshot()
+        snapshot = dict(infra.snapshot())
     except Exception as e:  # never break the dashboard because the platform API hiccups
-        return {"platform": infra.platform(), "error": f"{e.__class__.__name__}: {e}",
-                "nodes": [], "services": [], "events": []}
+        snapshot = {"platform": infra.platform(), "error": f"{e.__class__.__name__}: {e}",
+                    "nodes": [], "services": [], "events": []}
+    snapshot["capabilities"] = {"chaos_enabled": settings.enable_chaos_tests,
+                                "can_stop_tasks": settings.enable_chaos_tests and user.role == Role.admin}
+    return snapshot
 
 
 @router.post("/infra/tasks/{task_id}/stop")
 def chaos_stop(task_id: str, user: User = Depends(require_staff)):
     """Chaos engineering: kill a running task/pod and watch the orchestrator heal."""
+    if user.role != Role.admin:
+        raise HTTPException(403, "Only administrators can run chaos tests")
+    if not settings.enable_chaos_tests:
+        raise HTTPException(403, "Chaos tests are disabled for this deployment")
     if not re.fullmatch(r"[A-Za-z0-9-]{1,128}", task_id):
         raise HTTPException(400, "Bad task id")
     try:

@@ -315,10 +315,12 @@ function ClusterView() {
               </dl>
               {current.status === "RUNNING" && current.desired !== "STOPPED" && (
                 <div className="border-t border-k-line p-3">
-                  <Button variant="danger" className="w-full" disabled={offline || paused || loading || !!loadError} onClick={() => kill(current)}>
+                  <Button variant="danger" className="w-full" disabled={!snap?.capabilities?.can_stop_tasks || offline || paused || loading || !!loadError} onClick={() => kill(current)}>
                     <Skull className="h-3.5 w-3.5" /> Chaos test: stop this {P.unit.toLowerCase()}
                   </Button>
-                  <p className="mt-2 text-2xs text-k-label">This separate action changes the platform. The scheduler should replace the workload to restore its desired count.</p>
+                  <p className="mt-2 text-2xs text-k-label">{snap?.capabilities?.can_stop_tasks
+                    ? "This separate action changes the platform. The scheduler should replace the workload to restore its desired count."
+                    : "Read-only controls. Chaos tests require an administrator and an explicitly enabled deployment; the public dispatcher demo cannot stop workloads."}</p>
                 </div>
               )}
             </section>

@@ -130,4 +130,5 @@ export interface InfraSnapshot {
   events: { at: string; message: string }[];
   fetched_at?: string;
   error?: string;
+  capabilities?: { chaos_enabled: boolean; can_stop_tasks: boolean };
 }

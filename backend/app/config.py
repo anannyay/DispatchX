@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     s3_bucket: str | None = None               # proof-of-delivery photos
     local_upload_dir: str = "/tmp/dispatchx-uploads"
     public_api_url: str = "http://localhost:8000"
+    # Explicit opt-in AND admin role are required; public demos remain read-only.
+    enable_chaos_tests: bool = False
 
     # Dispatch tuning
     dispatch_radii_km: str = "3,6,12,25"
