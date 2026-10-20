@@ -1,6 +1,7 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
@@ -9,9 +10,10 @@ from app.models import Order, OrderEvent, OrderStatus, Role, User
 from app.redis_client import order_offer, r, rider_offer, rider_state
 from app.schemas import OrderEventOut, OrderIn, QuoteIn, QuoteOut
 from app.services import events
+from app.services.booking import book_order
 from app.services.dispatch import release_rider
 from app.services.geo import quote
-from app.services.orders import InvalidTransition, broadcast, log_event, serialize, transition
+from app.services.orders import InvalidTransition, broadcast, serialize, transition
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -33,26 +35,53 @@ def get_quote(body: QuoteIn, _: User = Depends(get_current_user)):
 
 
 @router.post("", status_code=201)
-def create_order(body: OrderIn, user: User = Depends(require_customer), db: Session = Depends(get_db)):
-    q = quote(body.pickup.lat, body.pickup.lng, body.drop.lat, body.drop.lng)
-    if q["distance_km"] > 60:
-        raise HTTPException(422, "Deliveries are limited to 60 km")
-    order = Order(
-        customer_id=user.id,
-        pickup_address=body.pickup.address, pickup_lat=body.pickup.lat, pickup_lng=body.pickup.lng,
-        drop_address=body.drop.address, drop_lat=body.drop.lat, drop_lng=body.drop.lng,
-        package_note=body.package_note, **q,
-    )
-    db.add(order)
-    db.flush()
-    log_event(db, order.id, "status.pending", {"actor": f"customer:{user.id}", **q})
-    db.commit()
-    db.refresh(order)
-    r.incr("metrics:orders_created")
+def create_order(
+    body: OrderIn,
+    request: Request,
+    user: User = Depends(require_customer),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key",
+        description="Optional case-sensitive retry key: 8-128 characters from A-Z, a-z, 0-9, '.', '_', ':', '-'.",
+    ),
+):
+    """Create a booking, or return its current representation for a matching retry.
+
+    Both creation and replay return 201 with the original order ID. A key is
+    scoped to the authenticated customer and retained without expiry. Reusing
+    it with a different validated payload returns 409; invalid keys return 422.
+    Omitting the header creates a new booking on every request.
+    """
+    if len(request.headers.getlist("Idempotency-Key")) > 1:
+        raise HTTPException(422, "Supply only one Idempotency-Key header")
+    try:
+        order, created = book_order(db, user.id, body, idempotency_key)
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            _booking_metric("booking_conflicts")
+        raise
+    if not created:
+        _booking_metric("booking_replays")
+        return serialize(order)
+
+    _booking_metric("orders_created")
+    # There is still a DB commit / event publish gap: crashes or publish errors
+    # here can lose creation side effects. Replays never republish; an outbox is
+    # required for durable event delivery and is outside booking idempotency.
     broadcast(order)
     # Fan-out: dispatch, notifications and analytics all react to this one event
-    events.publish("order.created", {"order_id": order.id, "customer_id": user.id, **q})
+    events.publish("order.created", {
+        "order_id": order.id, "customer_id": order.customer_id,
+        "distance_km": order.distance_km, "price": order.price, "eta_minutes": order.eta_minutes,
+    })
     return serialize(order)
+
+
+def _booking_metric(name: str):
+    try:
+        r.incr(f"metrics:{name}")
+    except RedisError:
+        pass  # Observability must not change the result of a committed booking.
 
 
 @router.get("")

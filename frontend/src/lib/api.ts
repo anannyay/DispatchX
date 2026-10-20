@@ -59,7 +59,7 @@ async function refreshSession(): Promise<Session | null> {
 
 export async function api<T = unknown>(
   path: string,
-  opts: { method?: string; body?: unknown; auth?: boolean } = {},
+  opts: { method?: string; body?: unknown; auth?: boolean; idempotencyKey?: string } = {},
 ): Promise<T> {
   const { method = "GET", body, auth = true } = opts;
   const send = (token?: string) =>
@@ -68,6 +68,7 @@ export async function api<T = unknown>(
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });

@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    JSON, DateTime, Enum, Float, ForeignKey, Index, Integer, String,
+    JSON, DateTime, Enum, Float, ForeignKey, Index, Integer, String, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -97,4 +97,17 @@ class OrderEvent(Base):
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
     type: Mapped[str] = mapped_column(String(50))
     data: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class BookingIdentity(Base):
+    """Durable, customer-scoped retry identity; never stores the raw header key."""
+
+    __tablename__ = "booking_identities"
+    __table_args__ = (UniqueConstraint("customer_id", "key_hash", name="uq_booking_customer_key"),)
+
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    key_hash: Mapped[str] = mapped_column(String(64))
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

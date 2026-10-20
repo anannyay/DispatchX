@@ -3,6 +3,10 @@ const { test } = require("node:test");
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
+const booking = {};
+new Function("exports", ts.transpileModule(fs.readFileSync(path.join(__dirname, "../src/lib/booking.ts"), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText)(booking);
 
 // Run the actual page components with controlled hooks, requests and device callbacks.
 // This checks async state transitions, not DOM layout or React's own scheduler.
@@ -48,6 +52,7 @@ function consoleHarness(name, { geolocation } = {}) {
     "lucide-react": Object.fromEntries(["ArrowRight", "MousePointerClick", "Camera", "Check", "Crosshair", "Navigation", "Pause", "Play"].map((key) => [key, key])),
     "@/components/ui": { Button: "Button", Empty: "Empty", Spinner: "Spinner", StatusBadge: "StatusBadge" },
     "@/lib/api": { api: (url, options) => pending(requests, { url, options }), ApiError: Error },
+    "@/lib/booking": booking,
     "@/lib/format": { CITY_CENTER: [12.97, 77.59], inr: (n) => `INR ${n}`, timeAgo: () => "now", haversineKm: () => 1 },
     "@/lib/geocode": { reverseGeocode: (lat, lng) => pending(geocodes, { lat, lng }) },
     "@/lib/socket": {

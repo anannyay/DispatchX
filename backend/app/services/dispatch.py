@@ -4,18 +4,25 @@
    radius on every failed attempt (3 -> 6 -> 12 -> 25 km).
 2. Score candidates on distance and rating, skipping anyone who already
    declined this order, has gone stale, or is busy.
-3. Offer the job to the best rider. A per-rider lock (SET NX) guarantees a
-   rider never sees two offers at once, even with many workers dispatching
-   in parallel.
+3. Offer the job to the best rider. A per-rider reservation (SET NX) prevents
+   competing dispatchers from reserving the rider while that key is live.
 4. The offer expires after OFFER_TIMEOUT seconds and a Celery countdown task
    moves on to the next rider.
-5. Acceptance is a conditional UPDATE (status must still be pending), so two
-   riders can never both win the same order.
+5. Acceptance locks the rider profile, checks for active work using a current
+   read, then conditionally updates the pending order in the same transaction.
+
+These are bounded safeguards, not exactly-once processing: dispatch leases can
+expire mid-flight, and Redis, SQL and event publication are not one transaction.
+The rider row lock coordinates accept_offer callers, not other lifecycle writers
+or admin's pre-assignment Redis cleanup.
+Offer keys retain raw IDs for admin compatibility; callbacks cannot distinguish
+two generations of the same order/rider pair (e.g. after manual redispatch).
 """
 import logging
 import time
+from uuid import uuid4
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -38,6 +45,38 @@ RETRY_DELAY_S = 5
 # if Celery is down they still self-heal and the rescue job re-dispatches.
 OFFER_GRACE_S = 15
 
+# Compare and delete in Redis, never GET followed by an unconditional DEL.
+_RELEASE_LOCK = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+_RELEASE_OFFER = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+    return 0
+end
+redis.call('DEL', KEYS[1])
+if redis.call('GET', KEYS[2]) == ARGV[2] then
+    redis.call('DEL', KEYS[2])
+end
+return 1
+"""
+
+
+def _release_offer(order_id: int, rider_id: int) -> bool:
+    """Remove only this pair; tolerate admin offers without a rider reservation.
+
+    The order key is authoritative. If it changed, leave both keys alone; if
+    the rider is now reserved by another order, leave that reservation alone.
+    Raw IDs cannot detect a later offer of the *same* pair (the ABA boundary).
+    """
+    return bool(r.eval(
+        _RELEASE_OFFER, 2, order_offer(order_id), rider_offer(rider_id),
+        str(rider_id), str(order_id),
+    ))
+
 
 def _schedule(task_name: str, args: list, countdown: int):
     from app.workers import tasks
@@ -51,11 +90,20 @@ def find_candidates(lat: float, lng: float, radius_km: float, exclude: set[str])
         withdist=True, sort="ASC", count=30,
     )
     now = time.time()
+    hits = [(rid, dist) for rid, dist in hits if rid not in exclude]
+    if not hits:
+        return []
+    # GEOSEARCH bounds this to 30 riders / 60 reads in one network round trip.
+    # Preserve GEO order for stable score ties and the original hash defaults.
+    with r.pipeline(transaction=False) as pipe:
+        for rid, _ in hits:
+            pipe.sismember(AVAILABLE, rid)
+            pipe.hgetall(rider_state(rid))
+        states = pipe.execute()
     out = []
-    for rid, dist in hits:
-        if rid in exclude or not r.sismember(AVAILABLE, rid):
+    for (rid, dist), available, st in zip(hits, states[::2], states[1::2]):
+        if not available:
             continue
-        st = r.hgetall(rider_state(rid))
         if not st or now - float(st.get("ts", 0)) > STALE_AFTER_S:
             continue
         rating = float(st.get("rating") or 4.5)
@@ -66,8 +114,9 @@ def find_candidates(lat: float, lng: float, radius_km: float, exclude: set[str])
 
 
 def dispatch_order(order_id: int):
-    """Try to offer an order to the best available rider. Idempotent."""
-    if not r.set(dispatch_lock(order_id), "1", nx=True, ex=10):
+    """Try to offer an order, suppressing duplicate dispatch during the lease."""
+    token = uuid4().hex
+    if not r.set(dispatch_lock(order_id), token, nx=True, ex=10):
         return "locked"
     try:
         with SessionLocal() as db:
@@ -119,15 +168,14 @@ def dispatch_order(order_id: int):
             _schedule("dispatch_order_task", [order_id], RETRY_DELAY_S)
             return "retry"
     finally:
-        r.delete(dispatch_lock(order_id))
+        # A worker delayed past the TTL must not release its successor's lock.
+        r.eval(_RELEASE_LOCK, 1, dispatch_lock(order_id), token)
 
 
 def expire_offer(order_id: int, rider_id: int):
     """Called by Celery after the offer window. No-op if the rider already answered."""
-    if r.get(order_offer(order_id)) != str(rider_id):
+    if not _release_offer(order_id, rider_id):
         return "stale"
-    r.delete(order_offer(order_id))
-    r.delete(rider_offer(rider_id))
     r.incr(metric("offers_expired"))
     with SessionLocal() as db:
         log_event(db, order_id, "dispatch.offer_expired", {"rider_id": rider_id})
@@ -144,19 +192,51 @@ def accept_offer(db: Session, order_id: int, rider_id: int) -> Order:
     if r.get(order_offer(order_id)) != str(rider_id):
         raise OfferError("This offer is no longer available")
 
-    # Atomic compare-and-set: only one rider can ever flip pending -> assigned
-    res = db.execute(
-        update(Order)
-        .where(Order.id == order_id, Order.status == OrderStatus.pending)
-        .values(status=OrderStatus.assigned, rider_id=rider_id, assigned_at=utcnow())
-    )
-    if res.rowcount != 1:
-        db.rollback()
-        raise OfferError("Order was already taken or cancelled")
-    log_event(db, order_id, "status.assigned", {"from": "pending", "actor": f"rider:{rider_id}"})
-    db.commit()
+    try:
+        # Serialize all accept paths (including force_assign) for this rider.
+        # Select a scalar so a profile already in the identity map cannot skip
+        # the locking query. The lock is held until commit/rollback below.
+        profile_id = db.execute(
+            select(RiderProfile.user_id)
+            .where(RiderProfile.user_id == rider_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if profile_id is None:
+            raise OfferError("Rider profile not found")
 
-    r.delete(order_offer(order_id), rider_offer(rider_id))
+        # FOR UPDATE is also essential here: under MySQL REPEATABLE READ an
+        # ordinary SELECT could use a snapshot from before the profile wait.
+        active_id = db.execute(
+            select(Order.id)
+            .where(
+                Order.rider_id == rider_id,
+                Order.status.in_([OrderStatus.assigned, OrderStatus.picked_up]),
+            )
+            .limit(1)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if active_id is not None:
+            raise OfferError("Rider already has an active order")
+        # The offer may have expired or changed while waiting on the row lock.
+        if r.get(order_offer(order_id)) != str(rider_id):
+            raise OfferError("This offer is no longer available")
+
+        # Atomic compare-and-set: competing riders cannot both assign this
+        # pending order. Redis can still change between this check and commit.
+        res = db.execute(
+            update(Order)
+            .where(Order.id == order_id, Order.status == OrderStatus.pending)
+            .values(status=OrderStatus.assigned, rider_id=rider_id, assigned_at=utcnow())
+        )
+        if res.rowcount != 1:
+            raise OfferError("Order was already taken or cancelled")
+        log_event(db, order_id, "status.assigned", {"from": "pending", "actor": f"rider:{rider_id}"})
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    _release_offer(order_id, rider_id)
     r.srem(AVAILABLE, rider_id)
     r.hset(rider_state(rider_id), "order_id", order_id)
     r.incr(metric("offers_accepted"))
@@ -176,9 +256,8 @@ def accept_offer(db: Session, order_id: int, rider_id: int) -> Order:
 
 
 def reject_offer(order_id: int, rider_id: int):
-    if r.get(order_offer(order_id)) != str(rider_id):
+    if not _release_offer(order_id, rider_id):
         raise OfferError("This offer is no longer available")
-    r.delete(order_offer(order_id), rider_offer(rider_id))
     r.incr(metric("offers_rejected"))
     with SessionLocal() as db:
         log_event(db, order_id, "dispatch.offer_rejected", {"rider_id": rider_id})

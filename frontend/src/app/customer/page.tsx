@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, MousePointerClick } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import Navbar from "@/components/Navbar";
 import PlaceInput from "@/components/PlaceInput";
@@ -11,6 +11,7 @@ import RequireRole from "@/components/RequireRole";
 import Toasts from "@/components/Toasts";
 import { Button, Empty, Spinner, StatusBadge } from "@/components/ui";
 import { api } from "@/lib/api";
+import { bookingAttempt, type BookingAttempt } from "@/lib/booking";
 import { CITY_CENTER, inr, timeAgo } from "@/lib/format";
 import { reverseGeocode, type Place } from "@/lib/geocode";
 import { useSocketEvent } from "@/lib/socket";
@@ -35,6 +36,7 @@ function CustomerHome() {
   const [ordersAttempt, setOrdersAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const attempt = useRef<BookingAttempt | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -93,13 +95,15 @@ function CustomerHome() {
     setBusy(true);
     setError("");
     try {
+      const body = {
+        pickup: { address: pickup.label.slice(0, 250), lat: pickup.lat, lng: pickup.lng },
+        drop: { address: drop.label.slice(0, 250), lat: drop.lat, lng: drop.lng },
+        package_note: note || null,
+      };
+      attempt.current = bookingAttempt(attempt.current, body);
       const o = await api<Order>("/orders", {
         method: "POST",
-        body: {
-          pickup: { address: pickup.label.slice(0, 250), lat: pickup.lat, lng: pickup.lng },
-          drop: { address: drop.label.slice(0, 250), lat: drop.lat, lng: drop.lng },
-          package_note: note || null,
-        },
+        body, idempotencyKey: attempt.current.key,
       });
       router.push(`/customer/orders/${o.id}`);
     } catch (e) {
@@ -147,7 +151,7 @@ function CustomerHome() {
                 <Button variant="secondary" size="sm" onClick={() => setQuoteAttempt((n) => n + 1)} disabled={quoteLoading}>Retry quote</Button>
               </div>
             )}
-            {error && <p className="text-xs text-k-err">{error}</p>}
+            {error && <p role="alert" className="text-xs text-k-err">{error} Retrying the unchanged form reuses the same booking request.</p>}
             <Button onClick={placeOrder} disabled={!pickup || !drop || busy} size="lg" className="w-full">
               {busy ? <Spinner /> : <>Book delivery{quote ? ` · ${inr(quote.price)}` : ""}<ArrowRight className="h-4 w-4" /></>}
             </Button>
