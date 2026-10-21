@@ -60,6 +60,10 @@ td:first-child { font-weight: 600; white-space: nowrap; }
 .step p, .step ul { margin: 0 0 6px; }
 .say { font-style: italic; color: var(--muted); }
 .say::before { content: "Say: "; font-style: normal; font-weight: 600; color: var(--ink); }
+.cc { font-size: 13.5px; color: var(--muted); margin-top: 6px !important; }
+.cc b { color: var(--accent); font-weight: 600; }
+.ask { font-size: 13.5px; border-left: 2px solid var(--line); padding-left: 10px; color: var(--muted); }
+.ask::before { content: "If she asks: "; font-weight: 600; color: var(--ink); }
 .console { counter-reset: c; list-style: none; padding: 0; margin: 10px 0; }
 .console > li { counter-increment: c; position: relative; padding: 12px 0 12px 44px; border-bottom: 1px solid var(--line); max-width: none; }
 .console > li::before { content: counter(c); position: absolute; left: 0; top: 12px; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font: 600 13px/25px var(--f-mono); text-align: center; }
@@ -89,7 +93,7 @@ html { scroll-behavior: smooth; }
   <a href="#scaling">Scaling &amp; high availability</a>
   <a href="#iac">Infrastructure as code &amp; CI/CD</a>
   <a href="#containers">Docker &amp; Kubernetes</a>
-  <a href="#demo">Demo script (8 min)</a>
+  <a href="#demo">Demo script (10 min)</a>
   <a href="#console">AWS console tour</a>
   <a href="#challenges">Problems we solved</a>
   <a href="#viva">Viva questions</a>
@@ -267,7 +271,7 @@ flowchart LR
 <h2 id="containers">Docker and Kubernetes</h2>
 <p><b>Docker:</b> every component (API, web frontend, workers, Prometheus, Grafana) is a Docker image. Locally the whole system runs with one <code>docker compose up</code>; on AWS, ECS runs the same images.</p>
 <p><b>Kubernetes:</b> the <code>k8s/</code> folder runs the same images on a 3-node Kubernetes cluster (kind, Kubernetes-in-Docker). It uses Deployments, a StatefulSet for MySQL with a persistent volume, Services, an NGINX Ingress, HorizontalPodAutoscalers, RBAC and a Job for seeding. GitHub Actions builds this cluster and runs the end-to-end test on it on every push.</p>
-<p><b>Visualising it:</b> the app's <b>Cluster</b> page draws the live cluster, whichever platform it runs on: EC2 instances and ECS tasks on AWS, or nodes and pods on Kubernetes. You can stop a container from that page and watch the orchestrator replace it.</p>
+<p><b>Visualising it:</b> the app's <b>Live cluster</b> page draws the live cluster, whichever platform it runs on: EC2 instances and ECS tasks on AWS, or nodes and pods on Kubernetes. You can stop a container from that page and watch the orchestrator replace it.</p>
 <div class="tbl"><table>
 <thead><tr><th>Idea</th><th>Amazon ECS (our AWS deployment)</th><th>Kubernetes equivalent</th></tr></thead>
 <tbody>
@@ -283,17 +287,68 @@ flowchart LR
 </tbody></table></div>
 <div class="note"><b>Why ECS and not EKS on AWS?</b> EKS charges about $73/month just for the Kubernetes control plane, and our Free plan account had to stay within credits. ECS has no control-plane fee and integrates natively with ALB, IAM and CloudWatch. Because the images are identical, moving to EKS later would only mean pointing the <code>k8s/</code> manifests at an EKS cluster.</div>
 
-<h2 id="demo">Demo script (8 minutes)</h2>
-<div class="note warn"><b>Before you start (10 minutes ahead):</b> open the app and log in as Dispatcher to check it loads. Start the simulator so the map is busy: <code>cd D:\dispatchx-app</code> then <code>python simulator\simulator.py --base-url https://d1lwatbh61o9k3.cloudfront.net --riders 60 --orders-per-min 20</code>. Open tabs: the app (Dispatcher), the app in an incognito window (Customer), Grafana, the AWS console on CloudFormation in Sydney, the GitHub Actions page.</div>
+<h2 id="demo">Demo script (10 minutes)</h2>
+<p>The story in one line: <b>one real order end to end, then a busy city, then we break a server on purpose and the system heals itself, then we show it was all built from code.</b> Each step names the course concept it proves.</p>
 
-<div class="step"><div class="t">0:00</div><div><h4>The problem</h4><p class="say">Same-city deliveries need a rider within seconds and live tracking for the customer. That means hundreds of GPS updates per second, so the system has to scale, stay up when servers fail and process work in the background. We built it on AWS.</p></div></div>
-<div class="step"><div class="t">0:45</div><div><h4>Customer books a delivery</h4><p>Incognito window → Sign in → <b>Customer</b>. Click the map twice (pickup, then drop). Point at the distance, ETA and fare. Click <b>Book delivery</b>.</p><p class="say">The order is saved in RDS and published to SNS, which fans it out to SQS queues. A consumer searches Redis for the nearest rider.</p></div></div>
-<div class="step"><div class="t">1:45</div><div><h4>Matched and tracking live</h4><p>The tracking page shows "Matching", then a rider is assigned within seconds and moves on the map.</p><p class="say">The rider's GPS streams over WebSockets every 2 seconds. The customer may be connected to a different server than the rider; Redis pub/sub carries the message between them.</p></div></div>
-<div class="step"><div class="t">2:30</div><div><h4>Operations map (kepler.gl)</h4><p>Dispatcher tab → <b>Operations</b>. Point at the KPI strip (riders online, average assign time, offers). On the map: cyan riders are available, violet ones are delivering, arcs are live trips, hexagons are demand. Click the <b>cube</b> icon for 3D, and in the left panel turn on <b>Height</b> for Demand density.</p><p class="say">This is Uber's open-source kepler.gl, rendering the live fleet with WebGL. Positions update in place as events arrive.</p></div></div>
-<div class="step"><div class="t">4:00</div><div><h4>Chaos test</h4><p>Click <b>Cluster</b>. Show the EC2 instances in two Availability Zones and the containers on each. Click an <b>api</b> task → <b>Chaos test: stop this task</b>. Go back to Operations: everything still works. Return to Cluster: a replacement task appears marked NEW.</p><p class="say">ECS keeps the desired count. The load balancer stops sending traffic to the dead container and starts using the new one once its health check passes. No user notices.</p></div></div>
-<div class="step"><div class="t">5:00</div><div><h4>Monitoring</h4><p>Grafana tab: orders per minute, offer outcomes, GPS pings per second, API latency per endpoint. Mention the CloudWatch dashboard and the email alarms.</p></div></div>
-<div class="step"><div class="t">5:45</div><div><h4>Infrastructure as code</h4><p>AWS console → CloudFormation: the parent stack and 7 nested stacks. Open the App stack's <b>Resources</b> tab to show how much was created from code. Then GitHub Actions: a green run with test → build → deploy → production test.</p><p class="say">Nothing was clicked together by hand. We can destroy and recreate the whole environment from Git.</p></div></div>
-<div class="step"><div class="t">7:00</div><div><h4>Wrap up</h4><p class="say">We covered multi-tier VPC networking, elastic compute with ECS and Auto Scaling, managed databases and caching, decoupling with SNS and SQS, serverless with Lambda and EventBridge, a data lake with Athena, CloudFront and WAF at the edge, CloudWatch monitoring, IAM and Secrets Manager, and full automation with CloudFormation and CI/CD. The same containers also run on Kubernetes.</p></div></div>
+<div class="note warn"><b>Set up 15 minutes before (on the laptop you present from):</b>
+<ol class="tight">
+<li><b>Tab 1, normal window:</b> app → Sign in as <b>admin@dispatchx.dev</b> / dispatchx123 → Operations. Use admin for the whole demo; it sees everything the dispatcher sees and is the only login allowed to run the chaos test.</li>
+<li><b>Tab 2, incognito window:</b> app → Sign in as <b>Customer</b>.</li>
+<li><b>Tab 3, a second incognito or another browser:</b> app → Sign in as <b>Rider</b> → go Online. (Optional; skip it if switching windows feels clumsy. A simulated rider will take the order instead.)</li>
+<li><b>Tab 4:</b> AWS console, region <b>Sydney</b>, on CloudFormation → Stacks.</li>
+<li><b>Tab 5:</b> github.com/anannyay/DispatchX/actions showing the green runs.</li>
+<li><b>Tab 6:</b> Grafana (<span class="mono">/grafana/</span>).</li>
+<li>Make sure no simulation is running: the button top-right of Operations should read <b>Simulate traffic</b>, not "Simulating". No terminal simulator either.</li>
+</ol></div>
+
+<div class="step"><div class="t">0:00</div><div><h4>The problem and the architecture</h4>
+<p>Open <b>Cloud explorer</b> in the top menu. Walk left to right: users → CloudFront + WAF → load balancer → containers on ECS in two Availability Zones → RDS MySQL, ElastiCache Redis, S3 → SNS/SQS → Lambda. Click two or three boxes to show what each one does.</p>
+<p class="say">Same-city delivery needs a rider in seconds and live tracking for the customer. That means hundreds of GPS updates a second, servers that can fail without users noticing, and work done in the background. This is how we built it on AWS.</p>
+<p class="cc"><b>Concepts:</b> multi-tier architecture · public / app / data subnets in a VPC · managed services over self-managed · the AWS Well-Architected pillars (reliability, performance, security, cost, operations)</p></div></div>
+
+<div class="step"><div class="t">1:30</div><div><h4>One real order, end to end</h4>
+<p><b>Customer tab:</b> click the map for pickup, then drop. Point at distance, ETA and fare. Click <b>Book delivery</b>. The tracking page says "Matching".</p>
+<p><b>Rider tab</b> (if open): an offer pops up within a couple of seconds → <b>Accept</b> → <b>Confirm pickup</b> → <b>Complete without photo</b> (or upload a photo, which goes to S3). On the customer tab the status and the rider's position update live without refreshing.</p>
+<p class="say">The order is written to RDS and published to an SNS topic. SNS fans it out to SQS queues: one for dispatch, one for notifications, one for analytics. The dispatch worker asks Redis for the nearest free rider using a geospatial query and sends the offer over a WebSocket.</p>
+<p class="cc"><b>Concepts:</b> decoupled, event-driven architecture · SNS fan-out to SQS · dead-letter queues for failed messages · Redis GEO for "nearest rider" · WebSockets for real time</p>
+<p class="ask">What if two riders accept at the same moment? "Only one wins. The accept is a single conditional database update, and a Redis lock makes sure each rider only gets one offer at a time." And double-tapping Book creates one order, not two, because each booking carries an idempotency key.</p></div></div>
+
+<div class="step"><div class="t">3:30</div><div><h4>Make it a busy city</h4>
+<p><b>Admin tab → Operations.</b> Click <b>Simulate traffic</b> (top right) → <b>Busy</b> → <b>Start simulation</b>. Within about ten seconds, 60 riders appear and orders start flowing. Point at the KPI strip: riders online, waiting, in progress, average assign time.</p>
+<p>On the map: cyan dots are free riders, violet ones are delivering, arcs are live trips, hexagons show where demand is. Click the <b>cube</b> icon for 3D.</p>
+<p class="say">This generator runs inside our container cluster on AWS, not on my laptop. Every virtual rider logs in, streams GPS every two seconds and accepts or declines offers through the real API, so this is the real dispatch system under load.</p>
+<p class="cc"><b>Concepts:</b> stateless app servers (any server can serve any user because shared state lives in Redis) · horizontal scaling · Redis pub/sub carrying WebSocket messages between servers · kepler.gl / WebGL for live geospatial data</p>
+<p class="ask">Optional, if there's time: Stop, choose <b>Overload</b>, Start. Waiting climbs because orders arrive faster than riders can finish. "That's when auto scaling and a dispatcher matter: queues absorb the burst instead of the system crashing."</p></div></div>
+
+<div class="step"><div class="t">5:00</div><div><h4>Break a server on purpose</h4>
+<p>Leave the simulation running. Click <b>Live cluster</b>. Show the two EC2 instances in two Availability Zones and the containers on each. Click an <b>api</b> container → <b>Chaos test: stop this task</b>. Switch to Operations: riders keep moving and orders keep being assigned. Back to Live cluster: within about a minute a replacement container appears and turns healthy.</p>
+<p class="say">I just crashed one of our backend servers. Users didn't notice because the load balancer stopped sending traffic to it, and ECS has already started a replacement because we told it to always keep two running. Nobody touched anything.</p>
+<p class="cc"><b>Concepts:</b> high availability across Availability Zones · self-healing (ECS desired count, ALB health checks, Auto Scaling group) · no single point of failure · chaos engineering (Netflix's Chaos Monkey idea)</p>
+<p class="ask">What if a whole server or AZ dies? "The Auto Scaling group replaces the EC2 instance, and ECS reschedules the containers on the healthy one. RDS Multi-AZ and a Redis replica cover the data tier; we can switch those on from the pipeline."</p></div></div>
+
+<div class="step"><div class="t">6:30</div><div><h4>Watch it from the inside</h4>
+<p><b>System signals</b> page: queue backlog, pending orders, how old the oldest waiting work is. Then <b>Grafana</b>: orders per minute, offer outcomes, GPS pings per second, API latency.</p>
+<p class="say">You can't run a cloud system you can't see. Prometheus scrapes every container, Grafana draws it, and CloudWatch has a dashboard and 10 alarms that email us if, for example, the dead-letter queue gets messages or the API returns errors.</p>
+<p class="cc"><b>Concepts:</b> monitoring and observability · CloudWatch metrics, alarms and logs · scaling on metrics (the API scales on CPU, the consumer on SQS queue depth)</p>
+<p>Then <b>Stop simulation</b> on Operations. Open deliveries finish and the riders go offline.</p></div></div>
+
+<div class="step"><div class="t">7:30</div><div><h4>Proof it's real AWS, built from code</h4>
+<p><b>AWS console → CloudFormation:</b> the parent stack and 7 nested stacks. Open the App stack → <b>Resources</b> to show how much was created from templates. Optionally ECS → cluster → services, then RDS, then S3 (the proof-of-delivery photos). <b>GitHub Actions:</b> a green run with test → build 4 Docker images → deploy → test against the live site.</p>
+<p class="say">Nothing was clicked together by hand. Every change goes through tests, gets built into Docker images, pushed to ECR and deployed by CloudFormation, then tested again on the live site. We can delete the whole environment and rebuild it from Git in about 25 minutes.</p>
+<p class="cc"><b>Concepts:</b> infrastructure as code · nested stacks · CI/CD · immutable container images in ECR · least-privilege IAM roles · secrets in Secrets Manager, never in code</p></div></div>
+
+<div class="step"><div class="t">9:00</div><div><h4>Wrap up</h4>
+<p class="say">We covered a multi-tier VPC across two Availability Zones, elastic compute with ECS and Auto Scaling, a managed database and cache, decoupling with SNS and SQS, serverless with Lambda and EventBridge, a data lake with Athena, CloudFront and WAF at the edge, monitoring with CloudWatch, security with IAM and Secrets Manager, and full automation with CloudFormation and CI/CD. The same Docker images also run on Kubernetes.</p></div></div>
+
+<h3>If something goes wrong</h3>
+<div class="tbl"><table>
+<tbody>
+<tr><td>No rider offer for the customer's order</td><td>A simulated rider probably took it, which is still a valid demo. Or the simulation is still running; stop it first next time.</td></tr>
+<tr><td>Simulate traffic says "already running"</td><td>Someone else started one. Click Stop, wait about 10 seconds, start again.</td></tr>
+<tr><td>Chaos button is greyed out</td><td>You're logged in as dispatcher. Sign out and sign in as <b>admin@dispatchx.dev</b>.</td></tr>
+<tr><td>Map is blank or slow</td><td>Refresh the page. If WebGL is blocked on that computer, use Live cluster and the console instead.</td></tr>
+<tr><td>The site is down</td><td>Show GitHub Actions and the CloudFormation console. The architecture and code story still stands, and you can explain the self-healing design from the Cloud explorer page.</td></tr>
+</tbody></table></div>
 
 <h2 id="console">AWS console tour</h2>
 <p>If she asks to see "what you did on AWS", follow this order. Check the region selector says <b>Asia Pacific (Sydney)</b> on every page.</p>
@@ -355,16 +410,16 @@ flowchart LR
 <tbody>
 <tr><td>App</td><td class="mono">https://d1lwatbh61o9k3.cloudfront.net</td></tr>
 <tr><td>Grafana</td><td class="mono">https://d1lwatbh61o9k3.cloudfront.net/grafana/</td></tr>
-<tr><td>Logins</td><td class="mono">customer@dispatchx.dev · rider@dispatchx.dev · dispatch@dispatchx.dev · password dispatchx123 (one-click buttons on the sign-in page)</td></tr>
+<tr><td>Logins</td><td class="mono">admin@dispatchx.dev (use for the demo; only one that can run the chaos test) · customer@dispatchx.dev · rider@dispatchx.dev · dispatch@dispatchx.dev · password dispatchx123</td></tr>
 <tr><td>AWS region</td><td>Asia Pacific (Sydney), ap-southeast-2</td></tr>
 <tr><td>Repository</td><td class="mono">https://github.com/anannyay/DispatchX</td></tr>
-<tr><td>Simulator</td><td class="mono">python simulator\simulator.py --base-url https://d1lwatbh61o9k3.cloudfront.net --riders 60 --orders-per-min 20</td></tr>
+<tr><td>Simulator</td><td>Operations page → <b>Simulate traffic</b> → Calm / Busy / Overload → Start. Terminal alternative: <span class="mono">python simulator\simulator.py --base-url https://d1lwatbh61o9k3.cloudfront.net --riders 60 --orders-per-min 5</span> (do not run both at once)</td></tr>
 <tr><td>Numbers we measured</td><td>60 riders streaming about 29 GPS updates/s with 0 errors; average rider assignment about 4 s; first full deployment 23 minutes; later deployments about 8 minutes; Kubernetes CI run about 3 minutes</td></tr>
 <tr><td>Stack</td><td>Next.js, TypeScript, Tailwind, kepler.gl · FastAPI, Python, SQLAlchemy, Alembic, JWT, Socket.IO, Celery · MySQL, Redis · Docker, ECS, EC2, RDS, ElastiCache, S3, SNS, SQS, Lambda, CloudFront, WAF, CloudWatch, CloudFormation · Prometheus, Grafana · Kubernetes</td></tr>
 </tbody></table></div>
 
 <h2 id="after">After the presentation</h2>
-<p>Stop the simulator with <b>Ctrl+C</b>. Then delete everything that costs money:</p>
+<p>Click <b>Stop simulation</b> on Operations (or Ctrl+C in the terminal simulator). Then delete everything that costs money:</p>
 <ol class="tight">
 <li>Open <span class="mono">github.com/anannyay/DispatchX/actions</span>.</li>
 <li>Choose <b>Destroy AWS stack</b> → <b>Run workflow</b>, type <code>destroy</code>, run it.</li>
