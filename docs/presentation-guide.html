@@ -294,7 +294,7 @@ flowchart LR
 <ol class="tight">
 <li><b>Tab 1, normal window:</b> app → Sign in as <b>admin@dispatchx.dev</b> / dispatchx123 → Operations. Use admin for the whole demo; it sees everything the dispatcher sees and is the only login allowed to run the chaos test.</li>
 <li><b>Tab 2, incognito window:</b> app → Sign in as <b>Customer</b>.</li>
-<li><b>Tab 3, a second incognito or another browser:</b> app → Sign in as <b>Rider</b> → go Online. (Optional; skip it if switching windows feels clumsy. A simulated rider will take the order instead.)</li>
+<li><b>Tab 3, a different browser (Edge or Firefox):</b> app → Sign in as <b>Rider</b> → go Online. Not a second incognito window: all incognito windows share one login, and so do all normal tabs. (Optional; skip it if switching windows feels clumsy. A simulated rider will take the order instead.)</li>
 <li><b>Tab 4:</b> AWS console, region <b>Sydney</b>, on CloudFormation → Stacks.</li>
 <li><b>Tab 5:</b> github.com/anannyay/DispatchX/actions showing the green runs.</li>
 <li><b>Tab 6:</b> Grafana (<span class="mono">/grafana/</span>).</li>
@@ -345,6 +345,7 @@ flowchart LR
 <tbody>
 <tr><td>No rider offer for the customer's order</td><td>A simulated rider probably took it, which is still a valid demo. Or the simulation is still running; stop it first next time.</td></tr>
 <tr><td>Simulate traffic says "already running"</td><td>Someone else started one. Click Stop, wait about 10 seconds, start again.</td></tr>
+<tr><td>"Insufficient permissions" when booking</td><td>That window is logged in as admin, because signing in on one tab changes every tab in that window. Use the incognito window for the customer, sign out and sign in as <b>customer@dispatchx.dev</b>.</td></tr>
 <tr><td>Chaos button is greyed out</td><td>You're logged in as dispatcher. Sign out and sign in as <b>admin@dispatchx.dev</b>.</td></tr>
 <tr><td>Map is blank or slow</td><td>Refresh the page. If WebGL is blocked on that computer, use Live cluster and the console instead.</td></tr>
 <tr><td>The site is down</td><td>Show GitHub Actions and the CloudFormation console. The architecture and code story still stands, and you can explain the self-healing design from the Cloud explorer page.</td></tr>
